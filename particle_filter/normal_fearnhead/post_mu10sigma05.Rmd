@@ -1,0 +1,535 @@
+---
+title: "real_fearnhead"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## mu=1, sigma=0.5
+
+
+```{r}
+source("pf_normal_fearnhead.r")
+
+
+input_mu <- 1
+input_sigma <- 0.5
+
+set.seed(6291117)
+
+n <- 200
+
+k <- 3
+
+
+mu_true <- c(0, input_mu, 2 * input_mu)
+sigma_true<- c(0.5, 0.5, input_sigma)
+tau_true <- 1/sigma_true^2
+pi_true <- c(1/2, 1/6, 1/3)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated sigma k= ",i," :", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+plot(density(y))
+```
+
+
+
+
+```{r}
+aa = -3
+bb = 7
+x.grid <- seq(aa, bb , length.out = 500)
+df_points <- data.frame(x = y, y = rep(0, length(y)))
+```
+
+### prior
+
+```{r}
+alpha <- 0.5
+a <- 1
+b <- 1
+eta <- 0
+variance_kappa <- 5^2
+kappa <- variance_kappa
+pricision_kappa <- 1/variance_kappa
+
+
+delta <- 1
+lambda <- 3
+```
+
+### MCMC DIC
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"normal/rjmcmc.R"))
+set.seed(6291117)
+
+
+iter <- 10000
+burn.in <- iter/5
+# chain 1
+k <- 3
+mu <- rnorm(k,eta,sqrt(variance_kappa))
+tau <- rgamma(k, a, b)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter, y, 
+                          eta,pricision_kappa,a,b,delta,
+                          mu, tau, pi, Z, 
+                          k
+                          )
+est_MCMC_3 <- est[[1]]
+```
+```{r}
+
+iter1 <- 10000
+burn.in1 <- iter1/5
+
+k <- 1
+mu <- rnorm(k,eta,sqrt(variance_kappa))
+tau <- rgamma(k, a, b)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter1, y, 
+                          eta,pricision_kappa,a,b,delta,
+                          mu, tau, pi, Z, 
+                          k
+                          )
+est_MCMC_1 <- est[[1]]
+
+
+iter2 <- 10000
+burn.in2 <- iter2/5
+
+k <- 2
+mu <- rnorm(k,eta,sqrt(variance_kappa))
+tau <- rgamma(k, a, b)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter2, y, 
+                          eta,pricision_kappa,a,b,delta,
+                          mu, tau, pi, Z, 
+                          k
+                          )
+est_MCMC_2 <- est[[1]]
+
+
+```
+
+
+
+```{r}
+
+source("../dir_manager.r")
+source(file.path(dir_path,"normal/rjmcmc.R"))
+DIC2 <- compute_DIC(2, est_MCMC_2, y, burn.in2, iter2)
+DIC3 <- compute_DIC(3, est_MCMC_3, y, burn.in, iter)
+DIC1 <- compute_DIC(1, est_MCMC_1, y, burn.in1, iter1)
+cat("DIC2: ", DIC2, "\n")
+cat("DIC3: ", DIC3, "\n")
+cat("DIC1: ", DIC1, "\n")
+```
+
+```{r}
+est_MCMC_3_burn <- est_MCMC_3[(burn.in + 1): iter, ]
+est_MCMC_2_burn <- est_MCMC_2[(burn.in + 1): iter, ]
+est_MCMC_1_burn <- est_MCMC_1[(burn.in + 1): iter, ]
+```
+
+
+```{r}
+
+target_est <- est_MCMC_1
+
+par(mfrow=c(3,3))
+plot(target_est[burn.in:iter,1],main='mu1 ',type='l' ,col="red")
+plot(target_est[burn.in:iter,2],,main='mu2 ',type='l' ,col="red")
+plot(target_est[burn.in:iter,3],main='mu3 ',type='l' ,col="red")
+
+plot(target_est[burn.in:iter,4],main='tau 1 ',type='l' ,col="red")
+plot(target_est[burn.in:iter,5],main='tau2  ',type='l' ,col="red")
+plot(target_est[burn.in:iter,6],main='tau 3 ',type='l' ,col="red")
+
+plot(target_est[burn.in:iter,7],main='pi1 ',type='l' ,col="red")
+plot(target_est[burn.in:iter,8],main='pi2  ',type='l' ,col="red")
+plot(target_est[burn.in:iter,9],main='pi3 ',type='l' ,col="red")
+
+par(mfrow=c(3,3))
+plot(density(target_est[burn.in:iter,1]),main='mu1 ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,2]),main='mu2 ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,3]),main='mu3 ',type='l' ,col="red")
+
+
+plot(density(target_est[burn.in:iter,4]),main='tau 1 ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,5]),main='tau2  ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,6]),main='tau 3 ',type='l' ,col="red")
+
+plot(density(target_est[burn.in:iter,7]),main='pi1 ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,8]),main='pi2  ',type='l' ,col="red")
+plot(density(target_est[burn.in:iter,9]),main='pi3 ',type='l' ,col="red")
+```
+
+
+
+### RJMCMC
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"normal/rjmcmc.R"))
+set.seed(6217)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+
+iter <- 40000
+burn.in <- iter/5
+
+# Initial value
+k <- 5
+mu <- sort(rnorm(k, eta, sqrt(variance_kappa)))
+tau <- rgamma(k, a, b)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+
+# run
+est <- rjmcmc.k.normal(
+  iter=iter, X=y, max.K=max.K,# iteration count, data
+  xi=eta, kappa=pricision_kappa, alpha=a, this_beta=b, lambda=lambda, delta=delta,#  prior parameters
+  k=k, mu=mu, tau=tau, pi=pi, Z=Z # initial value
+                         )
+est_RJMCMC <- est[[1]]
+```
+
+```{r}
+
+est_RJMCMC <- extract_data(est_RJMCMC, burn.in + 1, iter)
+par(mfrow=c(1,2))
+plot(est_RJMCMC$k,main='k ',type='l' ,col="red")
+plot(density(est_RJMCMC$k),main='k ',type='l' ,col="red")
+cat("split_accept_count: ", split_accept_count, "\n")
+cat("combine_accept_count: ", combine_accept_count, "\n")
+cat("birth_accept_count: ", birth_accept_count, "\n")
+cat("death_accept_count: ", death_accept_count, "\n")
+print(sum(est_RJMCMC$k == 1))
+print(sum(est_RJMCMC$k == 2))
+print(sum(est_RJMCMC$k == 3))
+```
+
+```{r}
+source(file.path(dir_path,"normal/utilities.R"))
+est_RJMCMC_only1 <- remove_all_k_but(est_RJMCMC, 1)
+```
+
+
+```{r}
+
+target_s <- est_RJMCMC_only1
+
+par(mfrow=c(3, 3))
+plot(target_s$mu[,1],main='mu1 ',type='l' ,col="red")
+plot(target_s$mu[,2],main='mu2 ',type='l' ,col="red")
+plot(target_s$mu[,3],main='mu3 ',type='l' ,col="red")
+
+
+plot(target_s$tau[,1],main='tau 1 ',type='l' ,col="red")
+plot(target_s$tau[,2],main='tau 2 ',type='l' ,col="red")
+plot(target_s$tau[,3],main='tau 3 ',type='l' ,col="red")
+
+
+plot(target_s$pi[,1],main='pi 1 ',type='l' ,col="red")
+plot(target_s$pi[,2],main='pi 2 ',type='l' ,col="red")
+plot(target_s$pi[,3],main='pi 3 ',type='l' ,col="red")
+```
+
+
+```{r}
+par(mfrow=c(3,3))
+plot(density(target_s$mu[,1]),main='mu1 ',type='l' ,col="red")
+plot(density(target_s$mu[,2]),main='mu2 ',type='l' ,col="red")
+plot(density(target_s$mu[,3]),main='mu3 ',type='l' ,col="red")
+
+
+plot(density(target_s$tau[,1]),main='tau 1 ',type='l' ,col="red")
+plot(density(target_s$tau[,2]),main='tau 2 ',type='l' ,col="red")
+plot(density(target_s$tau[,3]),main='tau 3 ',type='l' ,col="red")
+
+
+plot(density(target_s$pi[,1]),main='pi 1 ',type='l' ,col="red")
+plot(density(target_s$pi[,2]),main='pi 2 ',type='l' ,col="red")
+plot(density(target_s$pi[,3]),main='pi 3 ',type='l' ,col="red")
+```
+
+```{r}
+chose_rjmcmc_k <- 1
+
+est_RJMCMC_only1_mat <- cbind(target_s$mu[, 1:chose_rjmcmc_k], 
+                                              target_s$tau[, 1:chose_rjmcmc_k],
+                                              target_s$pi[, 1:chose_rjmcmc_k])
+```
+
+
+### PF Init = 1
+
+```{r}
+source("real_fearnhead.r")
+set.seed(6291117)
+
+N <- 300
+
+
+
+res <- pf_fearnhead_normal(y, N,
+                       a, b, eta, variance_kappa, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+```{r}
+source("fearnhead_utilities.r")
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+
+
+```
+
+```{r}
+library(ggplot2)
+
+D.est <- get_estimation_in_grid(x.grid, uni_particles)
+
+# Plot
+
+# The estimation by weight
+D.wgt <- uni_w%*%D.est
+D.wgt <- D.wgt[1,]
+
+# Ensure x.grid and D.wgt are numeric vectors of the same length
+df_curve1 <- data.frame(x = x.grid, y = D.wgt)
+
+
+ggplot() +
+  geom_line(data = df_curve1, aes(x = x, y = y, color ="Initial number = 1")) +
+  geom_point(data = df_points, aes(x = x, y = y), shape = 16, size = 1) +
+  scale_color_manual(
+    name = "",
+    values = c("Initial number = N" = "red", "Initial number = 1" = "blue")
+  ) +
+  theme_minimal() +
+  labs(x = "y", y = "Density")
+```
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source("post_fearnhead_func.r")
+
+chose_k <- 2
+
+k_index <- get_particle_indices_by_k(uni_particles, chose_k)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters(k_particles,k_w, chose_k, samples_to_get)
+
+```
+
+
+```{r}
+cat("Number of k particles: ", length(k_particles), "\n")
+```
+
+
+
+```{r}
+
+target_est <- est_fearnhead
+
+# Trace plots
+par(mfrow = c(3, 3))
+plot(target_est[1:samples_to_get, 1], main = 'mu1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 2], main = 'mu2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 3], main = 'mu3',  type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 4], main = 'tau1', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 5], main = 'tau2', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 6], main = 'tau3', type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 7], main = 'pi1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 8], main = 'pi2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 9], main = 'pi3',  type = 'l', col = "red")
+
+# Density plots
+par(mfrow = c(3, 3))
+plot(density(target_est[1:samples_to_get, 1]), main = 'mu1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 2]), main = 'mu2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 3]), main = 'mu3',  type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 4]), main = 'tau1', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 5]), main = 'tau2', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 6]), main = 'tau3', type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 7]), main = 'pi1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 8]), main = 'pi2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 9]), main = 'pi3',  type = 'l', col = "red")
+
+```
+
+### Final Plot
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_labels = NULL,
+                                         input_mu = 1, input_sigma = 1) {
+  if (is.null(source_labels)) {
+    source_labels <- paste0("source", seq_along(mat_list))
+  }
+
+
+  true_vals <- switch(param_type,
+    mu  = mu_true,
+    tau = tau_true,
+    pi  = pi_true,
+    NULL
+  )
+
+  all_data <- lapply(seq_along(mat_list), function(i) {
+    mat <- mat_list[[i]]
+    label <- source_labels[[i]]
+
+    col_idx <- switch(param_type,
+      mu  = 1:k,
+      tau = (k + 1):(2 * k),
+      pi  = (2 * k + 1):(3 * k),
+      stop("param_type must be one of: 'mu', 'tau', 'pi'")
+    )
+
+    df <- as.data.frame(mat[, col_idx])
+    colnames(df) <- paste0(param_type, 1:k)
+
+    low_sd_flag <- any(apply(df, 2, sd, na.rm = TRUE) < 1e-4)
+
+    df_long <- df %>%
+      pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
+      mutate(
+        source = label,
+        parameter = case_when(
+          param_type == "mu"  ~ paste0("mu[", gsub("mu", "", parameter), "]"),
+          param_type == "tau" ~ paste0("tau[", gsub("tau", "", parameter), "]"),
+          param_type == "pi"  ~ paste0("pi[", gsub("pi", "", parameter), "]"),
+          TRUE ~ parameter
+        ),
+        low_sd = low_sd_flag
+      )
+
+    return(df_long)
+  })
+
+  df_combined <- bind_rows(all_data)
+
+  x_label_expr <- switch(param_type,
+    mu = expression(mu),
+    tau = expression(tau),
+    pi = expression(pi),
+    param_type
+  )
+
+  use_adjust <- any(df_combined$low_sd)
+
+  # 创建 ggplot 基础图
+  p <- ggplot(df_combined, aes(x = value, linetype = parameter, colour = source)) +
+    (if (use_adjust) geom_density(size = 1, alpha = 0.8, adjust = 0.01)
+     else geom_density(size = 1, alpha = 0.8)) +
+    theme_minimal() +
+    labs(
+      title = "",
+      x = x_label_expr, y = "Density",
+      colour = "Method", linetype = "Parameter"
+    ) +
+    scale_linetype_discrete(labels = function(x) parse(text = x))
+
+  # 添加真值线：不使用 aes，而是直接指定 xintercept
+  if (!is.null(true_vals)) {
+    for (i in seq_along(true_vals)) {
+      p <- p + geom_vline(
+        xintercept = true_vals[i],
+        colour = "black",
+        linetype = "dashed"
+      )
+    }
+  }
+
+  return(p)
+}
+
+
+
+
+```
+
+```{r}
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_2_burn ),
+  param_type = "mu",
+  k = 2,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_2_burn ),
+  param_type = "tau",
+  k = 2,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_2_burn ),
+  param_type = "pi",
+  k = 2,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+```
+
+
+
+```{r}
+plot(density(est_fearnhead[,7]))
+```
+

@@ -1,0 +1,446 @@
+---
+title: "DIC-k"
+output: html_document
+---
+
+
+## data
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_normal/mcmc_k.r"))
+source(file.path(dir_path,"rjmcmc_common/DIC.r"))
+
+set.seed(6291117)
+n <-  200
+# Generate Data
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+k <- 3
+sim_pi <- c(pi.1, pi.2, pi.3)
+
+sim_mu <- c( -5,    0,    5)
+sim_tau <- c(2, 5, 1)
+sim_sigma <- 1/sqrt(sim_tau)
+
+y <- c()
+for(i in c(1:k)){
+  y.k <- rnorm(n*sim_pi[i], mean = sim_mu[i], sd = sim_sigma[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated tau k= ",i," :", 1/sd(y.k)^2, "\n")
+  y <- c(y, y.k)
+}
+
+X <- sample(y)
+
+# prior
+xi <- 0
+kappa <- 0.001
+alpha <- 0.1
+beta <- 0.1
+delta <- 1
+
+```
+
+## k = 3
+
+```{r}
+# k = 3
+set.seed(6291117)
+iter <- 50000
+burn.in <- iter/5
+
+
+k = 3
+mu <- rnorm(k,xi, sqrt(1/kappa))
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+est <- mcmc_mixture_normal_k(iter, X, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z
+                          )
+est_k3 <- est[[1]]
+```
+
+
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+pp <- plot_sixpanel_trace_density(
+  est_k3, burn.in, iter,
+  truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_normal", "DIC_k", "k3", "k3.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+
+```
+
+
+
+## mixAK
+
+
+
+
+
+
+
+```{r}
+library(mixAK)
+
+set.seed(6291117)
+iter <- 50000
+burn.in <- iter/5
+
+
+k = 3
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+
+K <- 3
+
+prior <- list(
+  priorK   = "fixed",        
+  Kmax     = K,              
+  priormuQ = "independentC",     
+  xi       = xi,             
+  D        = 1/kappa,          
+  zeta     = 2*alpha,       
+  g        = 2*beta,         
+  delta    = delta   
+)
+
+# 初值：用你自己的 mu, tau, pi（Q=precision=tau）
+init <- list(
+  K     = K,
+  w     = pi,
+  mu    = mu,      # 行为迭代起点
+  Q     = tau,     # Q = precision
+  order = TRUE
+)
+
+# MCMC 长度（与你一致）
+nMCMC <- c(burn = burn.in, keep = iter - burn.in, thin = 1, info = 1000)
+
+fit_ak <- NMixMCMC(
+  y0    = X,
+  prior = prior,
+  init  = init,
+  nMCMC = nMCMC,
+  PED=FALSE,
+  scale  = list(shift = 0, scale = 1),
+)
+
+print(fit_ak)
+
+```
+```{r}
+
+fit_lab <- tryCatch(NMixRelabel(fit_ak, type = "KMeans"), error=function(e) fit_ak)
+post_mu  <- as.matrix(fit_lab$mu)
+post_tau <- as.matrix(fit_lab$Q)   # precision
+post_w   <- as.matrix(fit_lab$w)
+colMeans(post_mu); colMeans(post_tau); colMeans(post_w)
+
+
+plot_trace_density <- function(M, ylab_expr, title_prefix) {
+  stopifnot(is.matrix(M))
+  K <- ncol(M)
+  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b")[seq_len(K)]
+  par(mfrow = c(1, 2), mar = c(4,4,2,1))
+
+  # 左：trace 同图叠加
+  matplot(M, type = "l", lty = 1, col = cols,
+          xlab = "Iteration", ylab = ylab_expr,
+          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
+  leg <- as.expression(lapply(1:K, function(j) bquote(.(as.name(title_prefix))[.(j)])))
+  legend("topright", legend = leg, col = cols, lty = 1, bty = "n")
+
+  # 右：density 同图叠加
+  dens <- lapply(1:K, function(j) density(M[,j]))
+  xlim <- range(unlist(lapply(dens, `[[`, "x")))
+  ylim <- range(unlist(lapply(dens, `[[`, "y")))
+  plot(dens[[1]], xlim = xlim, ylim = ylim,
+       main = paste0("Posterior density of ", title_prefix),
+       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
+  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
+  legend("topright", legend = leg, col = cols, lwd = 2, bty = "n")
+}
+
+## 画 μ
+plot_trace_density(post_mu, expression(mu[j]), "mu")
+
+## 画 τ（precision）
+plot_trace_density(post_tau, expression(tau[j]), "tau")
+
+## 画 w（权重；density 会在 [0,1]）
+plot_trace_density(post_w, expression(w[j]), "w")
+
+```
+
+
+## k = 2
+
+```{r}
+set.seed(6291117)
+k <- 2
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+est <- mcmc_mixture_normal_k(iter, X, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z,
+                          k
+                          )
+est_k2 <- est[[1]]
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+pp <- plot_sixpanel_trace_density(
+  est_k2, 2.5* burn.in, iter,
+  truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_normal", "DIC_k", "k2", "k2.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+```
+
+
+
+## k = 4
+
+```{r}
+set.seed(6291117)
+k <- 4
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+est <- mcmc_mixture_normal_k(iter, X, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z,
+                          k
+                          )
+est_k4 <- est[[1]]
+```
+
+```{r}
+# plot_trace_and_density(est_k4, burn.in, iter, "mu", truth=sim_mu)   # for mu
+# plot_trace_and_density(est_k4, burn.in, iter, "tau", truth=sim_tau)  # for tau
+# plot_trace_and_density(est_k4, burn.in, iter, "pi", truth=sim_pi)   # for pi
+
+pp <- plot_sixpanel_trace_density(
+  est_k4,  burn.in, iter,
+  truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+
+ggsave(
+  file.path(pic_path, "rjmcmc_normal", "DIC_k", "k4", "k4.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+
+## Compute DIC
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/DIC.r"))
+DIC2 <- compute_DIC(2, est_k2, X, 2.5 * burn.in, iter)
+DIC3 <- compute_DIC(3, est_k3, X, burn.in, iter)
+DIC4 <- compute_DIC(4, est_k4, X, burn.in, iter)
+cat("DIC2: ", DIC2, "\n")
+cat("DIC3: ", DIC3, "\n")
+cat("DIC4: ", DIC4, "\n")
+```
+
+## data merged
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_normal/mcmc_k.r"))
+source(file.path(dir_path,"rjmcmc_common/DIC.r"))
+
+n <-  100
+# Generate Data
+set.seed(123)
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+sim_mu <- c( -5,    0,    5)
+sim_tau <- c(0.3, 0.3, 0.3)
+
+X.1 <- rnorm(pi.1 * n, sim_mu[1], 1/sqrt(sim_tau[1]) )
+X.2 <- rnorm(pi.2 * n, sim_mu[2], 1/sqrt(sim_tau[2]) )
+X.3 <- rnorm(pi.3 * n, sim_mu[3], 1/sqrt(sim_tau[3]) )
+
+X <- c(X.1,X.2,X.3)
+index <- sample(length(X))
+X <- X[index]
+
+# prior
+xi <- 0
+kappa <- 0.001
+alpha <- 0.001
+beta <- 0.001
+delta <- 1
+
+```
+
+### k = 3
+
+```{r}
+# k = 3
+set.seed(6291117)
+iter <- 50000
+burn.in <- iter/2
+
+
+k = 3
+mu <- rnorm(k,xi, sqrt(1/kappa))
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+est <- mcmc_mixture_normal_k(iter, X, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z
+                          )
+est_k3 <- est[[1]]
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+plot_trace_and_density(est_k3, burn.in, iter, "mu")   # for mu
+plot_trace_and_density(est_k3, burn.in, iter, "tau")  # for tau
+plot_trace_and_density(est_k3, burn.in, iter, "pi")   # for pi
+```
+
+
+### mixAK
+
+```{r}
+library(mixAK)
+
+set.seed(6291117)
+iter <- 50000
+burn.in <- iter/5
+
+
+k = 3
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k))
+Z <- rep(1:k, length.out=length(X))
+
+K <- 3
+
+prior <- list(
+  priorK   = "fixed",        
+  Kmax     = K,              
+  priormuQ = "independentC",     
+  xi       = xi,             
+  D        = 1/kappa,          
+  zeta     = 2*alpha,       
+  g        = 2*beta,         
+  delta    = delta   
+)
+
+# 初值：用你自己的 mu, tau, pi（Q=precision=tau）
+init <- list(
+  K     = K,
+  w     = pi,
+  mu    = mu,      # 行为迭代起点
+  Q     = tau,     # Q = precision
+  order = TRUE
+)
+
+# MCMC 长度（与你一致）
+nMCMC <- c(burn = burn.in, keep = iter - burn.in, thin = 1, info = 1000)
+
+fit_ak <- NMixMCMC(
+  y0    = X,
+  prior = prior,
+  init  = init,
+  nMCMC = nMCMC,
+  PED=FALSE,
+  scale  = list(shift = 0, scale = 1),
+)
+
+print(fit_ak)
+
+```
+
+
+```{r}
+
+fit_lab <- tryCatch(NMixRelabel(fit_ak, type = "KMeans"), error=function(e) fit_ak)
+post_mu  <- as.matrix(fit_lab$mu)
+post_tau <- as.matrix(fit_lab$Q)   # precision
+post_w   <- as.matrix(fit_lab$w)
+colMeans(post_mu); colMeans(post_tau); colMeans(post_w)
+
+
+plot_trace_density <- function(M, ylab_expr, title_prefix) {
+  stopifnot(is.matrix(M))
+  K <- ncol(M)
+  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b")[seq_len(K)]
+  par(mfrow = c(1, 2), mar = c(4,4,2,1))
+
+  # 左：trace 同图叠加
+  matplot(M, type = "l", lty = 1, col = cols,
+          xlab = "Iteration", ylab = ylab_expr,
+          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
+  leg <- as.expression(lapply(1:K, function(j) bquote(.(as.name(title_prefix))[.(j)])))
+  legend("topright", legend = leg, col = cols, lty = 1, bty = "n")
+
+  # 右：density 同图叠加
+  dens <- lapply(1:K, function(j) density(M[,j]))
+  xlim <- range(unlist(lapply(dens, `[[`, "x")))
+  ylim <- range(unlist(lapply(dens, `[[`, "y")))
+  plot(dens[[1]], xlim = xlim, ylim = ylim,
+       main = paste0("Posterior density of ", title_prefix),
+       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
+  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
+  legend("topright", legend = leg, col = cols, lwd = 2, bty = "n")
+}
+
+## 画 μ
+plot_trace_density(post_mu, expression(mu[j]), "mu")
+
+## 画 τ（precision）
+plot_trace_density(post_tau, expression(tau[j]), "tau")
+
+## 画 w（权重；density 会在 [0,1]）
+plot_trace_density(post_w, expression(w[j]), "w")
+
+```

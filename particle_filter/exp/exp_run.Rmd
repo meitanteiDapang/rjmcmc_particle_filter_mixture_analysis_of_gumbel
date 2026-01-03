@@ -1,0 +1,531 @@
+---
+title: "real_fearnhead"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## lambda=1, ttt= 10
+
+
+```{r}
+
+source("../../dir_manager.r")
+
+input_lambda <- 1
+ttt <- 10
+
+set.seed(15)
+
+n <- 600
+
+k <- 3
+
+lambda_true <- c(1 * input_lambda, 1/ttt * input_lambda, 1/ttt^2 * input_lambda)
+pi_true <- c(1/2, 1/6, 1/3)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rexp(n*pi_true[i], rate=lambda_true[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated sigma k= ",i," :", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+plot(density(y))
+rug(y)
+
+#logy <- log(y)
+#plot(density(logy))
+#rug(logy)
+```
+
+
+
+
+```{r}
+aa = -1
+bb = 400
+x.grid <- seq(aa, bb , length.out = 2500)
+df_points <- data.frame(x = y, y = rep(0, length(y)))
+```
+
+### prior
+
+```{r}
+alpha <- 3
+a <- 1
+b <- 1
+
+```
+
+
+
+### PF Init = 1
+
+```{r}
+source("pf_exp.r")
+set.seed(6291117)
+
+N <- 300
+
+
+
+res <- pf_exp(y, N,
+                       a, b, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+```
+
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/exp/exp_helper.r"))
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+
+# D.est <- get_estimation_in_grid_exp(x.grid, uni_particles)
+# 
+# # Plot
+# 
+# # The estimation by weight
+# D.wgt <- uni_w%*%D.est
+# D.wgt <- D.wgt[1,]
+# 
+# # Ensure x.grid and D.wgt are numeric vectors of the same length
+# df_curve1 <- data.frame(x = x.grid, y = D.wgt)
+```
+
+```{r}
+# library(ggplot2)
+# 
+# 
+# ggplot() +
+#   geom_line(data = df_curve1, aes(x = x, y = y, color ="Initial number = 1")) +
+#   geom_point(data = df_points, aes(x = x, y = y), shape = 16, size = 1) +
+#   scale_color_manual(
+#     name = "",
+#     values = c("Initial number = N" = "red", "Initial number = 1" = "blue")
+#   ) +
+#   theme_minimal() +
+#   labs(x = "y", y = "Density")
+```
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/exp/exp_helper.r"))
+
+get_k <- 2
+
+k_index <- get_particle_indices_by_k(uni_particles, get_k)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_exp(k_particles,k_w, get_k, samples_to_get)
+
+```
+
+```{r}
+cat("Number of k particles: ", length(k_particles), "\n")
+```
+
+```{r}
+
+target_est <- est_fearnhead
+
+# Trace plots
+
+
+# Density plots
+par(mfrow = c(2, 2))
+plot(density(target_est[1:samples_to_get, 1]), main = 'lambda1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 2]), main = 'lambda2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 3]), main = 'lambda3',  type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 4]), main = 'pi1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 5]), main = 'pi2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 6]), main = 'pi3',  type = 'l', col = "red")
+
+```
+
+### Final Plot
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# 准备数据
+df <- as.data.frame(target_est[1:samples_to_get, 1:4])
+colnames(df) <- c("lambda[1]", "lambda[2]", "pi[1]", "pi[2]")
+
+# 转为长格式
+df_long <- df %>%
+  pivot_longer(cols = everything(),
+               names_to = "parameter",
+               values_to = "value")
+
+# 绘图
+ggplot(df_long, aes(x = value)) +
+  geom_density(colour = "red", size = 1) +
+  facet_wrap(~ parameter, scales = "free", ncol = 2, labeller = label_parsed) +
+  theme_minimal() +
+  labs(title = "Posterior Densities of Parameters",
+       x = "Value", y = "Density") +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 16)
+  )
+
+
+```
+
+
+
+
+
+
+
+
+## lambda=1, ttt= 100
+
+
+```{r}
+
+source("../../dir_manager.r")
+
+input_lambda <- 1
+ttt <- 100
+
+set.seed(15)
+
+n <- 600
+
+k <- 3
+
+lambda_true <- c(1 * input_lambda, 1/ttt * input_lambda, 1/ttt^2 * input_lambda)
+pi_true <- c(1/2, 1/6, 1/3)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rexp(n*pi_true[i], rate=lambda_true[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated sigma k= ",i," :", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+plot(density(y))
+rug(y)
+
+#logy <- log(y)
+#plot(density(logy))
+#rug(logy)
+```
+
+
+
+
+```{r}
+aa = -1
+bb = 400
+x.grid <- seq(aa, bb , length.out = 2500)
+df_points <- data.frame(x = y, y = rep(0, length(y)))
+```
+
+### prior
+
+```{r}
+alpha <- 3
+a <- 1
+b <- 1
+
+```
+
+
+
+### PF Init = 1
+
+```{r}
+source("pf_exp.r")
+set.seed(6291117)
+
+N <- 300
+
+
+
+res <- pf_exp(y, N,
+                       a, b, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+```
+
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/exp/exp_helper.r"))
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+
+# D.est <- get_estimation_in_grid_exp(x.grid, uni_particles)
+# 
+# # Plot
+# 
+# # The estimation by weight
+# D.wgt <- uni_w%*%D.est
+# D.wgt <- D.wgt[1,]
+# 
+# # Ensure x.grid and D.wgt are numeric vectors of the same length
+# df_curve1 <- data.frame(x = x.grid, y = D.wgt)
+```
+
+```{r}
+library(ggplot2)
+
+# 
+# ggplot() +
+#   geom_line(data = df_curve1, aes(x = x, y = y, color ="Initial number = 1")) +
+#   geom_point(data = df_points, aes(x = x, y = y), shape = 16, size = 1) +
+#   scale_color_manual(
+#     name = "",
+#     values = c("Initial number = N" = "red", "Initial number = 1" = "blue")
+#   ) +
+#   theme_minimal() +
+#   labs(x = "y", y = "Density")
+```
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/exp/exp_helper.r"))
+
+get_k <- 3
+
+k_index <- get_particle_indices_by_k(uni_particles, get_k)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_exp(k_particles,k_w, get_k, samples_to_get)
+
+```
+
+```{r}
+cat("Number of k particles: ", length(k_particles), "\n")
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+target_est <- est_fearnhead
+
+pp <- plot_twopanel_density(
+  est_fearnhead,
+  k = 3,
+  truths = list(lambda = lambda_true, pi = pi_true)
+)
+
+# ggsave(
+#   file.path(pic_path, "pf_fearnhead", "exp", "well_separated.png"),
+#   pp,
+#   width = 6,
+#   height = 3
+# )
+
+```
+
+### Final Plot
+
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# 假设 input_lambda 和 ttt 已定义
+lambda_true_pre <- c(1/ttt^2 * input_lambda, 1/ttt * input_lambda, 1 * input_lambda )
+pi_true_pre <- c(1/3, 1/6, 1/2)
+
+k <- 3
+lambda_names <- paste0("lambda[", 1:k, "]")
+pi_names <- paste0("pi[", 1:k, "]")
+col_names <- c(lambda_names, pi_names)
+
+# 提取后验样本并转换为长格式
+df <- as.data.frame(target_est[1:samples_to_get, 1:(2 * k)])
+colnames(df) <- col_names
+
+df_long <- df %>%
+  pivot_longer(cols = everything(),
+               names_to = "parameter",
+               values_to = "value")
+
+# 创建 true 值的数据框
+true_values <- data.frame(
+  parameter = factor(c(lambda_names, pi_names), levels = c(lambda_names, pi_names)),
+  true_value = c(lambda_true_pre, pi_true_pre)
+)
+
+# 绘图
+ggplot(df_long, aes(x = value)) +
+  geom_density(colour = "red", size = 1) +
+  geom_vline(data = true_values, aes(xintercept = true_value), colour = "black", linetype = "dashed", size = 0.8) +
+  facet_wrap(~ parameter, scales = "free", ncol = k, labeller = label_parsed) +
+  theme_minimal() +
+  labs(title = "Posterior Densities of Parameters with True Values",
+       x = "Value", y = "Density") +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 16)
+  )
+
+
+```
+
+```{r}
+library(GGally)
+library(ggplot2)
+
+# 假设你有 posterior samples 的 data frame，包含 lambda1, lambda2, lambda3, pi1, pi2, pi3
+posterior_df <- as.data.frame(target_est[1:samples_to_get, 1:6])  # 例子
+
+colnames(posterior_df) <- c("lambda1", "lambda2", "lambda3", "pi1", "pi2", "pi3")
+
+# 绘制 corner plot
+ggpairs(posterior_df)
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# 设置 k 和真值
+k <- 3
+lambda_true_pre <- c(1 * input_lambda, 1/ttt^2 * input_lambda, 1/ttt * input_lambda)
+pi_true_pre <- c(1/2, 1/3, 1/6)
+
+# 构建列名
+lambda_names <- paste0("lambda[", 1:k, "]")
+pi_names <- paste0("pi[", 1:k, "]")
+col_names <- c(lambda_names, pi_names)
+
+# 构建数据框
+df <- as.data.frame(target_est[1:samples_to_get, 1:(2 * k)])
+colnames(df) <- col_names
+
+# 转为长格式并加上类型标签
+df_long <- df %>%
+  pivot_longer(cols = everything(),
+               names_to = "parameter",
+               values_to = "value") %>%
+  mutate(type = ifelse(grepl("pi", parameter), "pi", "lambda"))
+
+# 创建真值数据框
+true_vals_df <- data.frame(
+  parameter = factor(c(lambda_names, pi_names), levels = c(lambda_names, pi_names)),
+  true_value = c(lambda_true_pre, pi_true_pre)
+)
+
+# 分开画图后组合，并添加真值线
+p <- ggplot() +
+  geom_density(
+    data = df_long %>% filter(type == "lambda"),
+    aes(x = value),
+    colour = "red", size = 1, adjust = 1
+  ) +
+  geom_density(
+    data = df_long %>% filter(type == "pi"),
+    aes(x = value),
+    colour = "red", size = 1, adjust = 4
+  ) +
+  geom_vline(
+    data = true_vals_df,
+    aes(xintercept = true_value),
+    colour = "black", linetype = "dashed", size = 0.8
+  ) +
+  facet_wrap(~ parameter, scales = "free", ncol = k, labeller = label_parsed) +
+  theme_minimal() +
+  labs(title = "Posterior Densities of Parameters with True Values",
+       x = "Value", y = "Density") +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 16)
+  )
+
+print(p)
+
+
+```
+

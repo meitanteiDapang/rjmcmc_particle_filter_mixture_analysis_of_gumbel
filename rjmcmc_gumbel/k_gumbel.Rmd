@@ -1,0 +1,404 @@
+---
+title: "k_gumbel"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Data
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/k_gumbel_mcmc.r"))
+
+n <-  100
+k <- 3
+# Generate Data
+set.seed(123)
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+pi_true <- c(pi.1, pi.2, pi.3)
+mu_true <- c( -5,    0,    5)
+tau_true <- c(2, 5, 1)
+beta_true <- 1/tau_true
+
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rgumbel(n*pi_true[i], mu_true[i], beta_true[i])
+  beta_hat <- sqrt(6 / 3.14^2 * var(y.k))
+  mu_hat <- mean(y.k) - beta_hat * 0.5772
+  cat("simulated mu k= ",i," :", mu_hat, "\n")
+  cat("simulated tau= ",i," :", 1/beta_hat, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+
+```
+
+## Prior
+
+```{r}
+# prior
+xi <- 0
+kappa <- 0.001
+a <- 0.1
+b <- 0.1
+delta <- 1
+```
+
+
+
+## Run DIC
+
+### k = 3
+
+```{r}
+source(file.path(dir_path,"rjmcmc_gumbel/k_gumbel_mcmc.r"))
+
+
+# parameters
+iter3 <- 20000
+burn.in3 <- iter3/5
+
+
+k = 3
+MHsd_mu = c(0.5, 0.2, 0.4)
+MHsd_tau = c(3, 2.5, 1)
+
+set.seed(629)
+
+# initial value
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+
+res <- mcmc_mixture_gumbel_k(iter3, y, k, # iteration count, data
+                               xi, kappa, a, b, delta,#  prior parameters
+                               mu, tau, pi, Z, # initial value
+                               MHsd_mu, MHsd_tau,
+                               verbose = TRUE)
+cat("acceptance rate: ", res$acc_rate, "\n")
+
+est_mcmc_k_3 <- res$parameter
+
+```
+
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+pp <- plot_sixpanel_trace_density(
+  est_mcmc_k_3, burn.in3, iter3,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "DIC_k", "k3", "k3.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+### k = 2
+
+```{r}
+set.seed(629)
+k = 2
+
+iter2 <- 20000
+burn.in2 <- iter2/5
+
+MHsd_mu = c(0.8, 0.5)
+MHsd_tau = c(0.3, 1)
+
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+res <- mcmc_mixture_gumbel_k(iter2, y, k, # iteration count, data
+                               xi, kappa, a, b, delta,#  prior parameters
+                               mu, tau, pi, Z, # initial value
+                               MHsd_mu, MHsd_tau,
+                               verbose = TRUE)
+cat("acceptance rate: ", res$acc_rate, "\n")
+
+est_mcmc_k_2 <- res$parameter
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+pp <- plot_sixpanel_trace_density(
+  est_mcmc_k_2, burn.in2, iter2,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "DIC_k", "k2", "k2.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+
+
+### k = 4
+
+```{r}
+set.seed(629)
+k = 4
+
+iter4 <- 50000
+burn.in4 <- iter4/2
+
+MHsd_mu = c(0.3, 0.3, 0.3, 0.3)
+MHsd_tau = c(2.5, 2.5, 1.5, 1.5)
+
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+res <- mcmc_mixture_gumbel_k(iter4, y, k, # iteration count, data
+                               xi, kappa, a, b, delta,#  prior parameters
+                               mu, tau, pi, Z, # initial value
+                               MHsd_mu, MHsd_tau,
+                               verbose = TRUE)
+cat("acceptance rate: ", res$acc_rate, "\n")
+
+est_mcmc_k_4 <- res$parameter
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+pp <- plot_sixpanel_trace_density(
+  est_mcmc_k_4, burn.in4, iter4,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "DIC_k", "k4", "k4.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+```
+
+
+### compute DIC
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/DIC.r"))
+DIC2 <- compute_k_gumbel_DIC(2, est_mcmc_k_2, y, burn.in2, iter2)
+DIC3 <- compute_k_gumbel_DIC(3, est_mcmc_k_3, y, burn.in3, iter3)
+DIC4 <- compute_k_gumbel_DIC(4, est_mcmc_k_4, y, burn.in4, iter4)
+cat("DIC2: ", DIC2, "\n")
+cat("DIC3: ", DIC3, "\n")
+cat("DIC4: ", DIC4, "\n")
+```
+
+
+
+## bias，mse, coverage
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/k_gumbel_mcmc.r"))
+n <-  100
+k <- 3
+# Generate Data
+set.seed(123)
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+pi_true <- c(pi.1, pi.2, pi.3)
+mu_true <- c( -5,    0,    5)
+tau_true <- c(2, 5, 1)
+beta_true <- 1/tau_true
+
+
+xi <- 0
+kappa <- 0.001
+a <- 0.1
+b <- 0.1
+delta <- 1
+
+
+
+
+set.seed(123)
+# parameters
+iter <- 10000
+burn.in <- iter * 0.4
+
+k = 3
+MHsd_mu = c(0.5, 0.2, 0.4)
+MHsd_tau = c(3, 2.5, 1)
+
+N = 50 # number of group of data
+n <- 50 # number of simulated data
+my_list1 <- vector("list", N)
+
+tic("s=50")
+for (i in c(1:N)) {
+  cat("N: ", i, "\n")
+  # generate simulated data
+  set.seed(123 + i)
+  y.1 <- rgumbel(pi_true[1] * n, mu_true[1], beta_true[1] )
+  y.2 <- rgumbel(pi_true[2] * n, mu_true[2], beta_true[2] )
+  y.3 <- rgumbel(pi_true[3] * n, mu_true[3], beta_true[3] )
+  
+  y <- c(y.1,y.2,y.3)
+  index <- sample(length(y))
+  y <- y[index]
+  
+  # initial value
+  gamma_Euler <- 0.5772
+  beta_hat <- sqrt(6 / 3.14^2 * var(y))
+  mu_init <- mean(y) - beta_hat * gamma_Euler
+  tau_init <- 1 / beta_hat
+  
+  mu <- rep(mu_init, k)
+  tau <- rep(tau_init, k)
+  pi <- rep(1/k, k)
+  Z <- rep(1:k, length.out=length(y))
+  
+  
+  
+  res <- mcmc_mixture_gumbel_k(iter, y, k, # iteration count, data
+                                 xi, kappa, a, b, delta,#  prior parameters
+                                 mu, tau, pi, Z, # initial value
+                                 MHsd_mu, MHsd_tau,
+                                 verbose = FALSE)
+  cat("acceptance rate: ", res$acc_rate, "\n")
+  est <- res$parameter
+  my_list1[[i]] <- est[(burn.in + 1):iter,]
+}
+toc()
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/bias_mse_coverage.r"))
+analyse_list1 <- analyse_gumbel(mu_true, tau_true, pi_true, my_list1, N, iter, k,  burn.in)
+
+order_index <- order(mu_true)
+order_mu <- mu_true[order_index]
+order_tau <- tau_true[order_index]
+order_pi <- pi_true[order_index]
+
+print(order_mu)  
+print(order_tau) 
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+plot_coverage(analyse_list1$mu_coverage_table_list[1][[1]], expression(mu), order_mu[1])
+plot_coverage(analyse_list1$mu_coverage_table_list[2][[1]], expression(mu), order_mu[2])
+plot_coverage(analyse_list1$mu_coverage_table_list[3][[1]], expression(mu), order_mu[3])
+
+plot_coverage(analyse_list1$tau_coverage_table_list[1][[1]], expression(tau), order_tau[1])
+plot_coverage(analyse_list1$tau_coverage_table_list[2][[1]], expression(tau), order_tau[2])
+plot_coverage(analyse_list1$tau_coverage_table_list[3][[1]], expression(tau), order_tau[3])
+
+plot_coverage(analyse_list1$pi_coverage_table_list[1][[1]], expression(pi), order_pi[1])
+plot_coverage(analyse_list1$pi_coverage_table_list[2][[1]], expression(pi), order_pi[2])
+plot_coverage(analyse_list1$pi_coverage_table_list[3][[1]], expression(pi), order_pi[3])
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+plot_coverage <- function(df, y_label, true_value, sub_title) {
+  df <- df %>%
+    arrange(m) %>%
+    mutate(x = row_number())
+  
+  ggplot(df, aes(x = x, y = m)) +
+    geom_errorbar(aes(ymin = lower, ymax = upper),
+                  width = 0.1, color = "red") +
+    geom_point(color = "blue", size = 0.5) +  # 点小一点
+    geom_hline(yintercept = true_value, color = "black") +
+    labs(x = "Dataset", y = y_label, title = sub_title) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+      axis.title.x = element_text(size = 8)
+    )
+}
+
+# 生成带子标题的小图
+p1 <- plot_coverage(analyse_list1$mu_coverage_table_list[[1]],  expression(mu),  order_mu[1],  expression(mu[1]))
+p2 <- plot_coverage(analyse_list1$mu_coverage_table_list[[2]],  expression(mu),  order_mu[2],  expression(mu[2]))
+p3 <- plot_coverage(analyse_list1$mu_coverage_table_list[[3]],  expression(mu),  order_mu[3],  expression(mu[3]))
+
+p4 <- plot_coverage(analyse_list1$tau_coverage_table_list[[1]], expression(tau), order_tau[1], expression(tau[1]))
+p5 <- plot_coverage(analyse_list1$tau_coverage_table_list[[2]], expression(tau), order_tau[2], expression(tau[2]))
+p6 <- plot_coverage(analyse_list1$tau_coverage_table_list[[3]], expression(tau), order_tau[3], expression(tau[3]))
+
+p7 <- plot_coverage(analyse_list1$pi_coverage_table_list[[1]],  expression(pi),  order_pi[1],  expression(pi[1]))
+p8 <- plot_coverage(analyse_list1$pi_coverage_table_list[[2]],  expression(pi),  order_pi[2],  expression(pi[2]))
+p9 <- plot_coverage(analyse_list1$pi_coverage_table_list[[3]],  expression(pi),  order_pi[3],  expression(pi[3]))
+
+# 拼成大图（3x3）
+final_plot <- (p1 | p2 | p3) /
+              (p4 | p5 | p6) /
+              (p7 | p8 | p9)
+
+final_plot
+
+
+```
+

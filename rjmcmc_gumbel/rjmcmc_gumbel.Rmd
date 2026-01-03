@@ -1,0 +1,616 @@
+---
+title: "Gumbel"
+output: 
+  bookdown::pdf_document2: 
+    number_sections: true
+    toc: false
+    keep_tex: true          
+    df_print: paged        
+  bookdown::html_document2: default
+always_allow_html: true     
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+## Data
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/k_gumbel_mcmc.r"))
+
+n <-  100
+k <- 3
+# Generate Data
+set.seed(123)
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+pi_true <- c(pi.1, pi.2, pi.3)
+mu_true <- c( -5,    0,    5)
+tau_true <- c(2, 5, 1)
+beta_true <- 1/tau_true
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rgumbel(n*pi_true[i], mu_true[i], beta_true[i])
+  beta_hat <- sqrt(6 / 3.14^2 * var(y.k))
+  mu_hat <- mean(y.k) - beta_hat * 0.5772
+  cat("simulated mu k= ",i," :", mu_hat, "\n")
+  cat("simulated tau= ",i," :", 1/beta_hat, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+```
+
+
+
+
+## Vague Prior
+
+```{r}
+# Vague prior
+xi <- 0
+kappa <- 0.001; phi = 1/ kappa
+a <- 0.1
+g <- 0.1
+h <- 1
+delta <- 1
+lambda <- 3
+```
+
+
+
+### Birth death rate
+
+```{r}
+max.K <- 10
+min.K <- 1
+
+c_val <- 0.5 # example value, change as needed
+
+# Initialise
+birth_pr <- numeric(max.K)
+death_pr <- numeric(max.K)
+
+for (k in min.K:max.K) {
+  if (k < max.K) {
+    birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+  } else {
+    birth_pr[k] <- 0
+  }
+
+  if (k > min.K) {
+    death_pr[k] <- c_val * min(1, (k) / lambda)
+  } else {
+    death_pr[k] <- 0
+  }
+}
+
+cat("birth_pr: ", birth_pr, "\n")
+cat("death_pr: ", death_pr, "\n")
+```
+
+### run
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/rjmcmc_gumbel.r"))
+
+iter <- 50000
+burn.in <- iter/5
+
+
+set.seed(6291117)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+split_count <- 0
+combine_count <- 0
+birth_count <- 0
+death_count <- 0
+
+MHsd_mu <- list(
+  c(0.2),
+  c(1.2, 0.5),
+  c(0.8, 0.8, 0.8),
+  c(0.5, 0.5, 0.5, 0.5),
+  c(0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
+)
+  
+
+
+MHsd_tau <- list(
+  c(1),
+  c(1.1, 1),
+  c(1.5, 1.5, 1),
+  c(1.2, 1.2, 1.2, 1.2),
+  c(1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+k <- 3
+b <- rgamma(1, g, h)
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+tic("Start RJMCMC on Gumbel:")
+est_RJMCMC_raw <- rjmcmc_gumbel_random_b(iter, y, k,# iteration count, data
+                               max.K, min.K, birth_pr,death_pr,
+                               xi,kappa,a,g,h, delta,lambda,#  prior parameters
+                               mu, tau, pi, Z, b,# initial value
+                               MHsd_mu_list = MHsd_mu, MHsd_tau_list=MHsd_tau,left_boundary_TN,
+                               verbose = TRUE)
+cat("acceptance rate: ", est_RJMCMC_raw$acc_rate_mu_tau, "\n")
+toc()
+
+all_Z <- est_RJMCMC_raw$all_Z
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+### k plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+est_rjmcmc_all <- extract_data(est_RJMCMC_raw$parameter, burn.in + 1, iter)
+plot_k_trace_and_density(est_rjmcmc_all)
+
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+est_rjmcmc_3 <- remove_all_k_but(est_rjmcmc_all, 3)
+est_rjmcmc_4 <- remove_all_k_but(est_rjmcmc_all, 4)
+
+```
+
+
+### paramter plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+est_k <- 3
+
+# plot_rjmcmc_trace_and_density(est_rjmcmc_3$mu,  "mu", est_k, mu_true)
+# plot_rjmcmc_trace_and_density(est_rjmcmc_3$tau,  "tau", est_k, tau_true)
+# plot_rjmcmc_trace_and_density(est_rjmcmc_3$pi,  "pi", est_k, pi_true)
+
+pp <- plot_rjmcmc_sixpanel(
+  mats   = list(mu = est_rjmcmc_3$mu, tau = est_rjmcmc_3$tau, pi = est_rjmcmc_3$pi),
+  k      = est_k,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "rjmcmc", "vague_prior", "k3.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+```
+
+
+## Informative Prior
+
+```{r}
+# Informative prior
+xi <- 0
+kappa <- 1; phi = 1/ kappa
+a <- 0.1
+g <- 0.1
+h <- 1
+delta <- 1
+lambda <- 3
+```
+
+
+
+### Birth death rate
+
+```{r}
+max.K <- 10
+min.K <- 1
+
+c_val <- 0.5 # example value, change as needed
+
+# Initialise
+birth_pr <- numeric(max.K)
+death_pr <- numeric(max.K)
+
+for (k in min.K:max.K) {
+  if (k < max.K) {
+    birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+  } else {
+    birth_pr[k] <- 0
+  }
+
+  if (k > min.K) {
+    death_pr[k] <- c_val * min(1, (k) / lambda)
+  } else {
+    death_pr[k] <- 0
+  }
+}
+
+cat("birth_pr: ", birth_pr, "\n")
+cat("death_pr: ", death_pr, "\n")
+```
+
+### run
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/rjmcmc_gumbel.r"))
+
+iter <- 50000
+burn.in <- iter/5
+
+
+set.seed(6291117)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+split_count <- 0
+combine_count <- 0
+birth_count <- 0
+death_count <- 0
+
+MHsd_mu <- list(
+  c(0.2),
+  c(1.2, 0.5),
+  c(0.8, 0.8, 0.8),
+  c(0.5, 0.5, 0.5, 0.5),
+  c(0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
+)
+  
+
+
+MHsd_tau <- list(
+  c(1),
+  c(1.1, 1),
+  c(1.5, 1.5, 1),
+  c(1.2, 1.2, 1.2, 1.2),
+  c(1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+k <- 3
+b <- rgamma(1, g, h)
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+est_RJMCMC_raw <- rjmcmc_gumbel_random_b(iter, y, k,# iteration count, data
+                               max.K, min.K, birth_pr,death_pr,
+                               xi,kappa,a,g,h, delta,lambda,#  prior parameters
+                               mu, tau, pi, Z,b, # initial value
+                               MHsd_mu_list = MHsd_mu, MHsd_tau_list=MHsd_tau,left_boundary_TN,
+                               verbose = TRUE)
+cat("acceptance rate: ", est_RJMCMC_raw$acc_rate_mu_tau, "\n")
+
+cat("Split accept count: ", split_accept_count, "\n",
+    "Combine accept count: ", combine_accept_count, "\n",
+    "Birth accept count: ", birth_accept_count, "\n",
+    "Death accept count: ", death_accept_count, "\n")
+
+all_Z <- est_RJMCMC_raw$all_Z
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+### k plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+
+est_rjmcmc_all <- extract_data(est_RJMCMC_raw$parameter, burn.in + 1, iter)
+plot_k_trace_and_density(est_rjmcmc_all)
+
+```
+
+
+
+
+### paramter plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+est_k <- 3
+
+est_rjmcmc_t <- remove_all_k_but(est_rjmcmc_all, est_k)
+pp <- plot_rjmcmc_sixpanel(
+  mats   = list(mu = est_rjmcmc_t$mu, tau = est_rjmcmc_t$tau, pi = est_rjmcmc_t$pi),
+  k      = est_k,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "rjmcmc", "informative_prior", "k3", "k3.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+est_k <- 4
+
+est_rjmcmc_t <- remove_all_k_but(est_rjmcmc_all, est_k)
+pp <- plot_rjmcmc_sixpanel(
+  mats   = list(mu = est_rjmcmc_t$mu, tau = est_rjmcmc_t$tau, pi = est_rjmcmc_t$pi),
+  k      = est_k,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_gumbel", "rjmcmc", "informative_prior", "k4", "k4.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+est_k <- 4
+lst_est_after <- filter_by_component_size(all_Z, est_rjmcmc_all, min_count = 5)
+
+est_rjmcmc_t <- remove_all_k_but(lst_est_after, est_k)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$mu,  "mu", est_k, mu_true)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$tau,  "tau", est_k, tau_true)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$pi,  "pi", est_k, pi_true)
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+est_k <- 5
+est_rjmcmc_t <- remove_all_k_but(est_rjmcmc_all, est_k)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$mu,  "mu", est_k, mu_true)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$tau,  "tau", est_k, tau_true)
+plot_rjmcmc_trace_and_density(est_rjmcmc_t$pi,  "pi", est_k, pi_true)
+```
+
+
+
+## Second Data for compare
+
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/k_gumbel_mcmc.r"))
+
+input_mu <- 5
+input_tau <- 2
+
+set.seed(2)
+
+n <- 200
+
+k <- 3
+mu_true <- c(0, input_mu, 2 * input_mu)
+tau_true<- c(1/0.5, 1/0.5, 1/2.5)
+beta_true <- 1/tau_true
+pi_true <- c(1/2, 1/6, 1/3)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rgumbel(n*pi_true[i], mu_true[i], beta_true[i])
+  beta_hat <- sqrt(6 / 3.14^2 * var(y.k))
+  mu_hat <- mean(y.k) - beta_hat * 0.5772
+  cat("simulated mu k= ",i," :", mu_hat, "\n")
+  cat("simulated tau= ",i," :", 1/beta_hat, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+```
+### Prior
+
+```{r}
+# prior
+xi <- 0
+phi = 15^2; kappa = 1/phi
+a <- 0.01
+b <- 0.01
+delta <- 1
+lambda <- 3
+```
+
+
+### Birth death rate
+
+```{r}
+max.K <- 10
+min.K <- 1
+
+c_val <- 0.5 # example value, change as needed
+
+# Initialise
+birth_pr <- numeric(max.K)
+death_pr <- numeric(max.K)
+
+for (k in min.K:max.K) {
+  if (k < max.K) {
+    birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+  } else {
+    birth_pr[k] <- 0
+  }
+
+  if (k > min.K) {
+    death_pr[k] <- c_val * min(1, (k) / lambda)
+  } else {
+    death_pr[k] <- 0
+  }
+}
+
+cat("birth_pr: ", birth_pr, "\n")
+cat("death_pr: ", death_pr, "\n")
+```
+
+### run
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/rjmcmc_gumbel.r"))
+
+iter <- 50000
+burn.in <- iter/5
+
+
+set.seed(6291117)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+
+
+MHsd_mu <- list(
+  c(0.2),
+  c(1.2, 0.5),
+  c(0.8, 0.8, 0.8),
+  c(0.5, 0.5, 0.5, 0.5),
+  c(0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
+)
+  
+
+
+MHsd_tau <- list(
+  c(1),
+  c(1.1, 1),
+  c(1.5, 1.5, 1),
+  c(1.2, 1.2, 1.2, 1.2),
+  c(1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+k <- 3
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+est_RJMCMC_raw <- rjmcmc_gumbel(iter, y, k,# iteration count, data
+                               max.K, min.K, birth_pr,death_pr,
+                               xi = xi, kappa = kappa, a = a, b=b, delta,lambda,#  prior parameters
+                               mu, tau, pi, Z, # initial value
+                               MHsd_mu_list = MHsd_mu, MHsd_tau_list=MHsd_tau,left_boundary_TN,
+                               verbose = TRUE)
+cat("acceptance rate: ", est_RJMCMC_raw$acc_rate_mu_tau, "\n")
+
+cat("Split accept count: ", split_accept_count, "\n",
+    "Combine accept count: ", combine_accept_count, "\n",
+    "Birth accept count: ", birth_accept_count, "\n",
+    "Death accept count: ", death_accept_count, "\n")
+
+all_Z <- est_RJMCMC_raw$all_Z
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+### k plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+est_rjmcmc_all <- extract_data(est_RJMCMC_raw$parameter, burn.in + 1, iter)
+plot_k_trace_and_density(est_rjmcmc_all)
+
+```
+
+
+
+
+
+
+
+

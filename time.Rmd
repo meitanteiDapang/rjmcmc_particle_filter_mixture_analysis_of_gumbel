@@ -1,0 +1,496 @@
+---
+title: "time"
+output: html_document
+date: "2025-11-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## common
+
+```{r}
+library(ggplot2)
+
+# Gumbel(maxima) functions
+dgumbel <- function(x, mu = 0, sigma = 1) {
+  z <- (x - mu) / sigma
+  (1 / sigma) * exp(-(z + exp(-z)))
+}
+
+pgumbel <- function(x, mu = 0, sigma = 1) {
+  z <- (x - mu) / sigma
+  exp(-exp(-z))
+}
+
+# parameters
+mu <- 0
+sigma <- 1
+
+# x-range
+x_vals <- seq(mu - 5 * sigma, mu + 10 * sigma, length.out = 500)
+
+# data
+df_pdf <- data.frame(
+  x = x_vals,
+  y = dgumbel(x_vals, mu, sigma),
+  type = "PDF"
+)
+
+df_cdf <- data.frame(
+  x = x_vals,
+  y = pgumbel(x_vals, mu, sigma),
+  type = "CDF"
+)
+
+# 为了把 PDF 和 CDF 放在同一 y 轴系统，需要缩放 CDF 的值
+scale_factor <- max(df_pdf$y)  # 使用 PDF 最大值对齐尺度
+
+df_cdf$y_scaled <- df_cdf$y * scale_factor
+
+# plot
+ggplot() +
+  # PDF
+  geom_line(data = df_pdf, aes(x = x, y = y, colour = type), size = 1) +
+  # CDF（缩放后的）
+  geom_line(data = df_cdf, aes(x = x, y = y_scaled, colour = type), size = 1) +
+  
+  scale_y_continuous(
+    name = "Density",
+    sec.axis = sec_axis(~ . / scale_factor, name = "Probability")
+  ) +
+  
+  labs(x = "x", colour = "") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_blank(),
+    legend.position = "bottom"   # 图例放下面
+  )
+
+```
+
+
+
+
+
+
+## data n = 50
+
+```{r}
+library(evd)
+
+
+
+input_mu <- 3
+input_tau <- 2
+
+# Define a function to simulate a 3-component Gumbel mixture
+simulate_gumbel_mixture <- function(n, input_mu, input_tau) {
+  
+  # Set mixture parameters
+  k <- 3
+  mu_true <- c(0, input_mu, 2 * input_mu)
+  tau_true <- c(2 * input_tau, 4 * input_tau, input_tau)
+  beta_true <- 1 / tau_true
+  pi_true <- c(1/5, 3/10, 1/2)
+  
+  # Initialise output vector
+  y <- c()
+  
+  # Simulate data from each component
+  for (i in 1:k) {
+    n_i <- round(n * pi_true[i])
+    y.k <- rgumbel(n_i, mu_true[i], beta_true[i])
+    
+    beta_hat <- sqrt(6 / pi^2 * var(y.k))
+    mu_hat <- mean(y.k) - beta_hat * 0.5772
+    
+    y <- c(y, y.k)
+  }
+  
+  # Shuffle the combined vector
+  y <- sample(y)
+  
+  return(y)
+}
+
+
+set.seed(123)
+y10 <- simulate_gumbel_mixture(n = 10, input_mu = input_mu, input_tau = input_tau)
+y25 <- simulate_gumbel_mixture(n = 25, input_mu = input_mu, input_tau = input_tau)
+y50 <- simulate_gumbel_mixture(n = 50, input_mu = input_mu, input_tau = input_tau)
+y75 <- simulate_gumbel_mixture(n = 75, input_mu = input_mu, input_tau = input_tau)
+y100 <- simulate_gumbel_mixture(n = 100, input_mu = input_mu, input_tau = input_tau)
+y200 <- simulate_gumbel_mixture(n = 200, input_mu = input_mu, input_tau = input_tau)
+y300 <- simulate_gumbel_mixture(n = 300, input_mu = input_mu, input_tau = input_tau)
+```
+
+
+
+
+## RJMCMC
+
+
+```{r}
+library(tictoc)
+source("./dir_manager.r")
+source(file.path(dir_path, "rjmcmc_gumbel/rjmcmc_gumbel.R"))
+
+run_rjmcmc_gumbel_random_b <- function(iter, y) {
+  max.K <- 10
+  min.K <- 1
+  c_val <- 0.5
+  verbose <- FALSE
+
+  xi <- 5
+  kappa <- 1/10
+  a <- 2
+  g <- 2
+  h <- 1
+  delta <- 1
+  lambda <- 3
+
+  birth_pr <- numeric(max.K)
+  death_pr <- numeric(max.K)
+  for (k in min.K:max.K) {
+    if (k < max.K) {
+      birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+    } else {
+      birth_pr[k] <- 0
+    }
+    if (k > min.K) {
+      death_pr[k] <- c_val * min(1, k / lambda)
+    } else {
+      death_pr[k] <- 0
+    }
+  }
+
+  burn.in <- iter / 5
+  k <- 3
+
+  MHsd_mu <- list(
+    c(0.2),
+    c(1.2, 0.5),
+    c(0.8, 0.8, 0.8),
+    c(0.5, 0.5, 0.5, 0.5),
+    c(rep(0.2, 5)),
+    c(rep(0.2, 6)),
+    c(rep(0.2, 7)),
+    c(rep(0.2, 8)),
+    c(rep(0.2, 9)),
+    c(rep(0.2, 10))
+  )
+
+  MHsd_tau <- list(
+    c(1),
+    c(1.1, 1),
+    c(1.5, 1.5, 1),
+    c(rep(1.2, 4)),
+    c(rep(1, 5)),
+    c(rep(1, 6)),
+    c(rep(1, 7)),
+    c(rep(1, 8)),
+    c(rep(1, 9)),
+    c(rep(1, 10))
+  )
+
+  gamma_Euler <- 0.5772
+  beta_hat <- sqrt(6 / pi^2 * var(y))
+  mu_init <- mean(y) - beta_hat * gamma_Euler
+  tau_init <- 1 / beta_hat
+  left_boundary_TN <- 0.001
+
+  mu <- rep(mu_init, k)
+  tau <- rep(tau_init, k)
+  pi_k <- rep(1 / k, k)
+  Z <- rep(1:k, length.out = length(y))
+  b <- rgamma(1, shape = g, rate = h)
+
+  tic("Start RJMCMC on Gumbel (random b):")
+
+  est <- rjmcmc_gumbel_random_b(
+    iter, y, k,
+    max.K, min.K, birth_pr, death_pr,
+    xi, kappa, a, g, h, delta, lambda,
+    mu, tau, pi_k, Z, b,
+    MHsd_mu_list = MHsd_mu, MHsd_tau_list = MHsd_tau, left_boundary_TN,
+    verbose = verbose
+  )
+
+  tt <- toc(quiet = TRUE)
+  acc <- est$acc_rate_mu_tau
+  all_Z <- est$all_Z
+  all_Z <- all_Z[(burn.in + 1):iter, ]
+
+  cat("Acceptance rate:", acc, "\n")
+  cat("Runtime (sec):", round(tt$toc - tt$tic, 3), "\n")
+
+  safe_get <- function(x, name) if (!is.null(x[[name]])) x[[name]] else NA
+
+  return(list(
+    used_time = tt$toc - tt$tic,
+    acceptance = acc,
+    all_Z = all_Z,
+    split_accept_count   = safe_get(est, "split_accept_count"),
+    combine_accept_count = safe_get(est, "combine_accept_count"),
+    birth_accept_count   = safe_get(est, "birth_accept_count"),
+    death_accept_count   = safe_get(est, "death_accept_count"),
+    split_count          = safe_get(est, "split_count"),
+    combine_count        = safe_get(est, "combine_count"),
+    birth_count          = safe_get(est, "birth_count"),
+    death_count          = safe_get(est, "death_count")
+  ))
+}
+
+
+
+```
+
+
+### run
+
+```{r}
+library(dplyr)
+# y10 = y10, y25 = y25, y50 = y50, y75=y75, y100=y100,
+y_list <- list(y200=y200, y300=y300)
+iter_list <- c(10000, 20000, 50000, 100000)
+
+results <- data.frame(
+  dataset = character(),
+  iter = integer(),
+  used_time = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (y_name in names(y_list)) {
+  for (it in iter_list) {
+    cat("\n Running:", y_name, "with iter =", it, "\n")
+    
+    res <- run_rjmcmc_gumbel_random_b(iter = it, y = y_list[[y_name]])
+    
+    results <- rbind(
+      results,
+      data.frame(
+        dataset = y_name,
+        iter = it,
+        used_time = res$used_time
+      )
+    )
+  }
+}
+
+
+print(results)
+
+results <- results %>% arrange(dataset, iter)
+
+```
+
+```{r}
+happy1 <- results_rjmcmc
+happy2 <- results
+
+happy2 <- happy2 %>%
+  mutate(data_n = as.numeric(gsub("y", "", dataset)))
+```
+
+
+```{r}
+results_rjmcmc <- rbind(happy1, happy2)
+```
+
+
+### plot
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+
+results_rjmcmc <- results_rjmcmc %>%
+  mutate(data_n = as.numeric(gsub("y", "", dataset)))
+
+sci_format <- function(x) format(as.numeric(x), scientific = TRUE)
+
+p_a <- ggplot(results_rjmcmc, aes(x = iter, y = used_time, colour = factor(data_n), group = data_n)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(x = "Iterations", y = "Time (seconds)", colour = "Data size (n)") +
+  ggplot2::labs(title = "(a) Runtime vs Iterations") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, size = 14)
+  )
+
+p_b <- ggplot(results_rjmcmc, aes(x = data_n, y = used_time, colour = factor(iter), group = iter)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(x = "Data size (n)", y = "Time (seconds)", colour = "Iterations") +
+  ggplot2::labs(title = "(b) Runtime vs Data size") +
+  scale_colour_discrete(labels = sci_format) +  
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, size = 14)
+  )
+
+grid_runtime <- cowplot::plot_grid(
+  p_a, p_b,
+  ncol = 1, align = "hv"
+)
+
+grid_runtime
+ggsave(
+  file.path(pic_path, "time", "rjmcmc.png"),
+  grid_runtime,
+  width = 8,
+  height = 10
+)
+
+```
+
+## PF
+
+```{r}
+library(tictoc)
+source("./dir_manager.r")
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_pf.r"))
+
+run_pf_gumbel <- function(y, N) {
+  set.seed(6291117)
+
+  S_ratio <- 0.1
+  S <- 2000 * S_ratio
+  S_U <- 1000 * S_ratio
+
+  a <- 2
+  b <- 1
+  xi <- 5
+  phi <- 10
+  alpha <- 0.5
+
+  tic("Run pf_gumbel")
+  res <- pf_gumbel(
+    y, N,
+    a, b, xi, phi, alpha,
+    initial_size = 1,
+    S = S, S_U = S_U,
+    verbose = TRUE
+  )
+  tt <- toc(quiet = TRUE)
+
+  return(list(
+    used_time = tt$toc - tt$tic,
+    res = res
+  ))
+}
+
+
+```
+
+
+### run
+
+```{r}
+library(dplyr)
+# y10 = y10, y25 = y25, y50 = y50, y75=y75, y100=y100, y200=y200
+y_list <- list(y10 = y10, y25 = y25, y50 = y50, y75=y75, y100=y100)
+N_list <- c(10, 30,  50, 100, 200)
+
+results_pf_new <- data.frame(
+  dataset = character(),
+  N = integer(),
+  used_time = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (y_name in names(y_list)) {
+  for (n_val in N_list) {
+    cat("\n Running:", y_name, "with N =", n_val, "\n")
+    res <- run_pf_gumbel(y = y_list[[y_name]], N = n_val)
+    results_pf_new <- rbind(
+      results_pf_new,
+      data.frame(
+        dataset = y_name,
+        N = n_val,
+        used_time = res$used_time
+      )
+    )
+  }
+}
+
+results_pf_new <- results_pf_new %>% arrange(dataset, N)
+print(results_pf_new)
+
+```
+```{r}
+happy4 <- happy4
+happy3 <- results_pf_new
+
+happy3 <- happy3 %>%
+  mutate(data_n = as.numeric(gsub("y", "", dataset)))
+
+results_pf <- rbind(happy3, happy4)
+```
+
+
+### plot
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+
+results_pf <- results_pf %>%
+  mutate(data_n = as.numeric(gsub("y", "", dataset)))
+
+p_a <- ggplot(results_pf, aes(x = N, y = used_time, colour = factor(data_n), group = data_n)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(x = "Number of particles (N)", y = "Time (seconds)", colour = "Data size (n)") +
+  ggplot2::labs(title = "(a) Runtime vs Number of particles") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, size = 14)
+  )
+
+p_b <- ggplot(results_pf, aes(x = data_n, y = used_time, colour = factor(N), group = N)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(x = "Data size (n)", y = "Time (seconds)", colour = "N") +
+  ggplot2::labs(title = "(b) Runtime vs Data size") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    plot.title = element_text(hjust = 0.5, size = 14)
+  )
+
+grid_pf <- cowplot::plot_grid(
+  p_a, p_b,
+  ncol = 1, align = "hv"
+)
+
+grid_pf
+ggsave(
+  file.path(pic_path, "time", "pf.png"),
+  grid_pf,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+

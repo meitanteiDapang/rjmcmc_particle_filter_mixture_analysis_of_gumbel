@@ -1,0 +1,1423 @@
+---
+title: "gumbel_pf"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## New with rJMCMC
+
+### Data
+
+```{r}
+n <-  100
+k <- 3
+# Generate Data
+set.seed(123)
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+pi_true <- c(pi.1, pi.2, pi.3)
+mu_true <- c( -5,    0,    5)
+tau_true <- c(2, 5, 1)
+beta_true <- 1/tau_true
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rgumbel(n*pi_true[i], mu_true[i], beta_true[i])
+  beta_hat <- sqrt(6 / 3.14^2 * var(y.k))
+  mu_hat <- mean(y.k) - beta_hat * 0.5772
+  cat("simulated mu k= ",i," :", mu_hat, "\n")
+  cat("simulated tau= ",i," :", 1/beta_hat, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+```
+### Prior
+
+```{r}
+alpha <- 0.5
+
+xi <- 0
+phi <- 1000
+a <- 0.1
+b <- 0.1
+```
+
+
+### Run
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_pf.r"))
+
+library(tictoc)
+
+set.seed(6291117)
+
+N <- 200
+
+S_ratio <- 0.1
+
+S <- 2000 * S_ratio
+S_U <- 1000 * S_ratio
+
+tic("Run my function")
+res <- pf_gumbel(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                        S = S, S_U = S_U,
+                      verbose = TRUE) 
+
+toc()
+
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+### Analysis
+
+```{r}
+source(file.path(dir_path,"particle_filter/fearnhead_utilities.r"))
+
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+```
+
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_helper.r"))
+set.seed(629)
+
+k_index <- get_particle_indices_by_k(uni_particles, 3)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_gumbel(k_particles,k_w, 3, samples_to_get,
+                                                 y, eta, phi, a, b,
+                                                 MHsd_mu_l = c(0.4, 0.2, 0.3), 
+                                                 MHsd_tau_l = c(0.8, 4, 1),
+                                                 total_iter= 1500, burn_in = 500)
+
+```
+
+
+```{r}
+cat("Number of k particles: ", length(k_particles), "\n")
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+
+pp <- plot_threepanel_density(
+  est_fearnhead,
+  k = 3,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true)
+)
+
+ggsave(
+  file.path(pic_path, "pf_fearnhead", "gumbel", "same.png"),
+  pp,
+  width = 6,
+  height = 10
+)
+```
+
+
+```{r}
+
+target_est <- est_fearnhead
+
+# Trace plots
+par(mfrow = c(3, 3))
+plot(target_est[1:samples_to_get, 1], main = 'mu1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 2], main = 'mu2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 3], main = 'mu3',  type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 4], main = 'tau1', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 5], main = 'tau2', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 6], main = 'tau3', type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 7], main = 'pi1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 8], main = 'pi2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 9], main = 'pi3',  type = 'l', col = "red")
+
+# Density plots
+par(mfrow = c(3, 3))
+plot(density(target_est[1:samples_to_get, 1]), main = 'mu1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 2]), main = 'mu2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 3]), main = 'mu3',  type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 4]), main = 'tau1', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 5]), main = 'tau2', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 6]), main = 'tau3', type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 7]), main = 'pi1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 8]), main = 'pi2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 9]), main = 'pi3',  type = 'l', col = "red")
+
+```
+
+
+## data
+
+```{r}
+library(evd)
+
+
+
+input_mu <- 3
+input_tau <- 2
+
+set.seed(6291117)
+
+n <- 50
+
+k <- 3
+mu_true <- c(0, input_mu, 2 * input_mu)
+tau_true<- c(2 * input_tau, 4*input_tau, input_tau)
+beta_true <- 1/tau_true
+pi_true <- c(1/5, 3/10, 1/2)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rgumbel(n*pi_true[i], mu_true[i], beta_true[i])
+  beta_hat <- sqrt(6 / pi^2 * var(y.k))
+  mu_hat <- mean(y.k) - beta_hat * 0.5772
+  cat("simulated mu k= ",i," :", mu_hat, "\n")
+  cat("simulated tau= ",i," :", 1/beta_hat, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+print(y)
+
+plot(density(y))
+
+```
+
+
+## prior
+
+```{r}
+
+
+alpha <- 0.5
+# eta <- 5
+# phi <- 1000
+# a <- 0.002
+# b <- 0.001
+
+xi <- 5
+phi <- 10
+a <- 2
+b <- 1
+
+
+delta <- 1
+lambda <- 3
+```
+
+
+## run laplace
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_pf.r"))
+
+library(tictoc)
+
+set.seed(6291117)
+
+N <- 200
+
+tic("Run my function")
+res <- pf_gumbel_laplace(y, N,
+                       a, b, eta, phi, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+
+toc()
+
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+
+## run
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_pf.r"))
+
+library(tictoc)
+
+set.seed(6291117)
+
+N <- 200
+
+S_ratio <- 0.1
+
+S <- 2000 * S_ratio
+S_U <- 1000 * S_ratio
+
+tic("Run my function")
+res <- pf_gumbel(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                        S = S, S_U = S_U,
+                      verbose = TRUE) 
+
+toc()
+
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+### File Path
+```{r}
+source("../../dir_manager.r")
+# weight_file_name <- "weights_n50eta5phi10a2b1mutrue036tautrue482.csv"
+# weight_saved_path <- file.path(dir_path,"/particle_filter/gumbel/data/", weight_file_name)
+# particle_file_name <- "particles_n50eta5phi10a2b1mutrue036tautrue482.csv"
+# particle_saved_path <- file.path(dir_path,"/particle_filter/gumbel/data/", particle_file_name)
+
+
+weight_file_name <- "weights_n50eta5phi10a2b1mutrue036tautrue482_laplace.csv"
+weight_saved_path <- file.path(dir_path,"/particle_filter/gumbel/data/", weight_file_name)
+particle_file_name <- "particles_n50eta5phi10a2b1mutrue036tautrue482_laplace.csv"
+particle_saved_path <- file.path(dir_path,"/particle_filter/gumbel/data/", particle_file_name)
+```
+
+
+
+### Save
+
+```{r}
+
+
+write.csv(weights, weight_saved_path, row.names = FALSE)
+
+particle_matrix <- do.call(rbind, lapply(particles, function(x) {
+  length_x <- length(x)
+  max_len <- max(sapply(particles, length))
+  c(x, rep(NA, max_len - length_x))  # pad with NA
+}))
+
+write.csv(particle_matrix, particle_saved_path, row.names = FALSE)
+
+```
+
+
+
+### Load
+
+```{r}
+weights <- read.csv(weight_saved_path)$x
+
+particles_df <- read.csv(particle_saved_path)
+particles <- split(particles_df, seq(nrow(particles_df)))
+particles <- lapply(particles, function(row) as.numeric(na.omit(unlist(row))))
+```
+
+
+## anlysis
+
+```{r}
+source(file.path(dir_path,"particle_filter/fearnhead_utilities.r"))
+
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+```
+
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_helper.r"))
+set.seed(629)
+
+k_index <- get_particle_indices_by_k(uni_particles, 3)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_gumbel(k_particles,k_w, 3, samples_to_get,
+                                                 y, eta, phi, a, b,
+                                                 MHsd_mu_l = c(0.4, 0.2, 0.3), 
+                                                 MHsd_tau_l = c(0.8, 4, 1),
+                                                 total_iter= 1500, burn_in = 500)
+
+```
+
+
+```{r}
+cat("Number of k particles: ", length(k_particles), "\n")
+```
+
+
+```{r}
+
+target_est <- est_fearnhead
+
+# Trace plots
+par(mfrow = c(3, 3))
+plot(target_est[1:samples_to_get, 1], main = 'mu1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 2], main = 'mu2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 3], main = 'mu3',  type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 4], main = 'tau1', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 5], main = 'tau2', type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 6], main = 'tau3', type = 'l', col = "red")
+
+plot(target_est[1:samples_to_get, 7], main = 'pi1',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 8], main = 'pi2',  type = 'l', col = "red")
+plot(target_est[1:samples_to_get, 9], main = 'pi3',  type = 'l', col = "red")
+
+# Density plots
+par(mfrow = c(3, 3))
+plot(density(target_est[1:samples_to_get, 1]), main = 'mu1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 2]), main = 'mu2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 3]), main = 'mu3',  type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 4]), main = 'tau1', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 5]), main = 'tau2', type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 6]), main = 'tau3', type = 'l', col = "red")
+
+plot(density(target_est[1:samples_to_get, 7]), main = 'pi1',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 8]), main = 'pi2',  type = 'l', col = "red")
+plot(density(target_est[1:samples_to_get, 9]), main = 'pi3',  type = 'l', col = "red")
+
+```
+
+## MCMC DIC
+
+### k =2
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"gumbel/k_gumbel_MCMC.R"))
+
+set.seed(629)
+k = 2
+
+iter <- 20000
+burn.in <- iter/5
+
+MHsd_mu = c(0.8, 0.5)
+MHsd_tau = c(1.1, 1)
+
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / pi^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+w <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+est_MCMC_raw_2 <- mcmc_k_gumbel(iter, y, k, # iteration count, data
+                               xi=eta, kappa=1/phi, alpha=a, beta=b, delta=delta,#  prior parameters
+                               mu=mu, tau=tau, w=w, Z=Z, # initial value
+                               MHsd_mu=MHsd_mu, MHsd_tau=MHsd_tau,
+                               left_boundary_TN = left_boundary_TN,
+                               verbose = TRUE)
+print(est_MCMC_raw_2[[2]])
+est_MCMC_DIC_2 <- est_MCMC_raw_2[[1]][(burn.in + 1):iter,]
+
+```
+
+### k = 3
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"gumbel/k_gumbel_MCMC.R"))
+
+set.seed(629)
+k = 3
+
+iter <- 20000
+burn.in <- iter/5
+
+MHsd_mu = c(0.2, 0.3, 0.4)
+MHsd_tau = c(3, 2.5, 1)
+
+
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / pi^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+w <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+est_MCMC_raw_3 <- mcmc_k_gumbel(iter, y, k, # iteration count, data
+                               xi=eta, kappa=1/phi, alpha=a, beta=b, delta=delta,#  prior parameters
+                               mu=mu, tau=tau, w=w, Z=Z, # initial value
+                               MHsd_mu=MHsd_mu, MHsd_tau=MHsd_tau,
+                               left_boundary_TN = left_boundary_TN,
+                               verbose = TRUE)
+
+print(est_MCMC_raw_3[[2]])
+est_MCMC_DIC_3 <- est_MCMC_raw_3[[1]][(burn.in + 1):iter,]
+
+```
+
+
+### k =4
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"gumbel/k_gumbel_MCMC.R"))
+
+set.seed(629)
+k = 4
+
+iter <- 20000
+burn.in <- iter/5
+
+MHsd_mu = c(0.3, 0.3, 0.03, 0.03)
+MHsd_tau = c(2.5, 2.5, 1.5, 1.5)
+
+
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / pi^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+w <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+
+est_MCMC_raw_4 <- mcmc_k_gumbel(iter, y, k, # iteration count, data
+                               xi=eta, kappa=1/phi, alpha=a, beta=b, delta=delta,#  prior parameters
+                               mu=mu, tau=tau, w=w, Z=Z, # initial value
+                               MHsd_mu=MHsd_mu, MHsd_tau=MHsd_tau,
+                               left_boundary_TN = left_boundary_TN,
+                               verbose = TRUE)
+
+print(est_MCMC_raw_4[[2]])
+est_MCMC_DIC_4 <- est_MCMC_raw_4[[1]][(burn.in + 1):iter,]
+
+```
+
+
+
+### check plot
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+plot_est <- est_MCMC_DIC_4
+
+# trace plot for mu
+group_index <- 1
+plot_range <- c((1 + (group_index-1)*k )  : (group_index*k) )
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("mu", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("mu"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "mu", title = "Mu Traceplot") +
+  theme_minimal()
+
+# trace plot for tau
+group_index <- 2
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("tau", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("tau"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "tau", title = "Tau Traceplot") +
+  theme_minimal()
+
+# trace plot for w 
+group_index <- 3
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("w", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("w"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "w", title = "Weight Traceplot") +
+  theme_minimal()
+```
+
+
+
+```{r}
+# Density plot for mu
+group_index <- 1
+plot_range <- c((1 + (group_index-1)*k )  : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("mu", 1:k)
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("mu"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = value, fill = variable)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "mu", title = "Mu Density Plot") +
+  theme_minimal()
+
+# Density plot for tau
+group_index <- 2
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("tau", 1:k)
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("tau"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = value, fill = variable)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "tau", title = "Tau Density Plot") +
+  theme_minimal()
+
+# Density plot for w
+group_index <- 3
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("w", 1:k)
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("w"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = value, fill = variable)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "w", title = "Weight Density Plot") +
+  theme_minimal()
+
+```
+
+
+### DIC compute
+
+```{r}
+source(file.path(dir_path,"gumbel/k_DIC.r"))
+DIC2 <- compute_k_gumbel_DIC(2, est_MCMC_raw_2[[1]], y, burn.in, iter)
+cat("DIC2: ", DIC2, "\n")
+DIC3 <- compute_k_gumbel_DIC(3, est_MCMC_raw_3[[1]], y, burn.in, iter)
+cat("DIC3: ", DIC3, "\n")
+```
+## RJMCMC
+
+
+```{r}
+max.K <- 10
+min.K <- 1
+
+c_val <- 0.5 # example value, change as needed
+
+# Initialise
+birth_pr <- numeric(max.K)
+death_pr <- numeric(max.K)
+
+for (k in min.K:max.K) {
+  if (k < max.K) {
+    birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+  } else {
+    birth_pr[k] <- 0
+  }
+
+  if (k > min.K) {
+    death_pr[k] <- c_val * min(1, (k) / lambda)
+  } else {
+    death_pr[k] <- 0
+  }
+}
+
+cat("birth_pr: ", birth_pr, "\n")
+cat("death_pr: ", death_pr, "\n")
+```
+
+
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"gumbel/rjmcmc_gumbel.R"))
+
+iter <- 50000
+burn.in <- iter/5
+
+
+set.seed(6291117)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+
+
+MHsd_mu <- list(
+  c(0.2),
+  c(1.2, 0.5),
+  c(0.8, 0.8, 0.8),
+  c(0.5, 0.5, 0.5, 0.5),
+  c(0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
+)
+  
+
+
+MHsd_tau <- list(
+  c(1),
+  c(1.1, 1),
+  c(1.5, 1.5, 1),
+  c(1.2, 1.2, 1.2, 1.2),
+  c(1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+k <- 3
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / pi^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+w <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+est_RJMCMC_raw <- rjmcmc_gumbel(iter, y, k,# iteration count, data
+                               max.K, min.K, birth_pr,death_pr,
+                               xi = eta, kappa = 1/phi, alpha = a, this_beta=b, delta,lambda,#  prior parameters
+                               mu, tau, w, Z, # initial value
+                               MHsd_mu_list = MHsd_mu, MHsd_tau_list=MHsd_tau,left_boundary_TN,
+                               verbose = TRUE)
+cat("acceptance rate: ", est_RJMCMC_raw[[2]], "\n")
+
+cat("Split accept count: ", split_accept_count, "\n",
+    "Combine accept count: ", combine_accept_count, "\n",
+    "Birth accept count: ", birth_accept_count, "\n",
+    "Death accept count: ", death_accept_count, "\n")
+
+all_Z <- est_RJMCMC_raw[[3]]
+all_Z <- all_Z[(burn.in + 1): iter,]
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+lst_est1 <- extract_data(est_RJMCMC_raw[[1]], burn.in + 1, iter)
+par(mfrow=c(1,2))
+plot(lst_est1$k,main='k ',type='l' ,col="red")
+plot(density(lst_est1$k),main='k ',type='l' ,col="red")
+cat("split_accept_count: ", split_accept_count, "\n")
+cat("combine_accept_count: ", combine_accept_count, "\n")
+cat("birth_accept_count: ", birth_accept_count, "\n")
+cat("death_accept_count: ", death_accept_count, "\n")
+
+table(lst_est1$k)
+```
+
+
+```{r}
+# Keep rows where all values appear at least twice
+keep_rows <- apply(all_Z, 1, function(row) all(table(row) >= 5))
+
+# Filter all_Z and lst_est1 matrices
+lst_est1$mu  <- lst_est1$mu[keep_rows, , drop = FALSE]
+lst_est1$tau <- lst_est1$tau[keep_rows, , drop = FALSE]
+lst_est1$w   <- lst_est1$w[keep_rows, , drop = FALSE]
+lst_est1$k <- lst_est1$k[keep_rows]
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(lst_est1$k,main='k ',type='l' ,col="red")
+plot(density(lst_est1$k),main='k ',type='l' ,col="red")
+cat("split_accept_count: ", split_accept_count, "\n")
+cat("combine_accept_count: ", combine_accept_count, "\n")
+cat("birth_accept_count: ", birth_accept_count, "\n")
+cat("death_accept_count: ", death_accept_count, "\n")
+
+table(lst_est1$k)
+```
+
+
+### Mat
+
+```{r}
+lst_only5 <- remove_all_k_but(lst_est1, 5)
+lst_only4 <- remove_all_k_but(lst_est1, 4)
+lst_only3 <- remove_all_k_but(lst_est1, 3)
+lst_only2 <- remove_all_k_but(lst_est1, 2)
+
+est_RJMCMC_only3_mat <- cbind(lst_only3$mu[, 1:3], 
+                                              lst_only3$tau[, 1:3],
+                                              lst_only3$w[, 1:3])
+
+# lst_only1 <- lst_est1
+```
+
+### Plot
+
+
+#### k=3
+
+```{r}
+par(mfrow=c(3, 3))
+
+lst_plot <- lst_only3
+
+plot(lst_plot$mu[,1],main='mu1 ',type='l' ,col="red")
+plot(lst_plot$mu[,2],main='mu2 ',type='l' ,col="red")
+plot(lst_plot$mu[,3],main='mu3 ',type='l' ,col="red")
+
+
+plot(lst_plot$tau[,1],main='tau 1 ',type='l' ,col="red")
+plot(lst_plot$tau[,2],main='tau 2 ',type='l' ,col="red")
+plot(lst_plot$tau[,3],main='tau 3 ',type='l' ,col="red")
+
+
+plot(lst_plot$w[,1],main='pi 1 ',type='l' ,col="red")
+plot(lst_plot$w[,2],main='pi 2 ',type='l' ,col="red")
+plot(lst_plot$w[,3],main='pi 3 ',type='l' ,col="red")
+```
+```{r}
+par(mfrow=c(3,3))
+plot(density(lst_plot$mu[,1]),main='mu1 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,2]),main='mu2 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,3]),main='mu3 ',type='l' ,col="red")
+# plot(density(lst_plot$mu[,4]),main='mu4 ',type='l' ,col="red")
+
+plot(density(lst_plot$tau[,1]),main='tau 1 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,2]),main='tau 2 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,3]),main='tau 3 ',type='l' ,col="red")
+# plot(density(lst_plot$tau[,4]),main='tau 4 ',type='l' ,col="red")
+
+plot(density(lst_plot$w[,1]),main='pi 1 ',type='l' ,col="red")
+plot(density(lst_plot$w[,2]),main='pi 2 ',type='l' ,col="red")
+plot(density(lst_plot$w[,3]),main='pi 3 ',type='l' ,col="red")
+# plot(density(lst_plot$w[,4]),main='pi 4 ',type='l' ,col="red")
+```
+
+
+#### k =4
+
+
+
+
+
+```{r}
+par(mfrow=c(2, 2))
+
+lst_plot <- lst_only4
+
+mu <- lst_plot$mu
+tau <- lst_plot$tau
+w <- lst_plot$w
+
+
+
+plot(lst_plot$mu[,1],main='mu1 ',type='l' ,col="red")
+plot(lst_plot$mu[,2],main='mu2 ',type='l' ,col="red")
+plot(lst_plot$mu[,3],main='mu3 ',type='l' ,col="red")
+plot(lst_plot$mu[,4],main='mu4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+
+plot(lst_plot$tau[,1],main='tau 1 ',type='l' ,col="red")
+plot(lst_plot$tau[,2],main='tau 2 ',type='l' ,col="red")
+plot(lst_plot$tau[,3],main='tau 3 ',type='l' ,col="red")
+plot(lst_plot$tau[,4],main='tau 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+
+plot(lst_plot$w[,1],main='pi 1 ',type='l' ,col="red")
+plot(lst_plot$w[,2],main='pi 2 ',type='l' ,col="red")
+plot(lst_plot$w[,3],main='pi 3 ',type='l' ,col="red")
+plot(lst_plot$w[,4],main='pi 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$mu[,1]),main='mu1 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,2]),main='mu2 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,3]),main='mu3 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,4]),main='mu4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$tau[,1]),main='tau 1 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,2]),main='tau 2 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,3]),main='tau 3 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,4]),main='tau 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$w[,1]),main='pi 1 ',type='l' ,col="red")
+plot(density(lst_plot$w[,2]),main='pi 2 ',type='l' ,col="red")
+plot(density(lst_plot$w[,3]),main='pi 3 ',type='l' ,col="red")
+plot(density(lst_plot$w[,4]),main='pi 4 ',type='l' ,col="red")
+
+```
+
+#### k=5
+
+```{r}
+par(mfrow=c(2, 2))
+
+lst_plot <- lst_only5
+
+plot(lst_plot$mu[,1],main='mu1 ',type='l' ,col="red")
+plot(lst_plot$mu[,2],main='mu2 ',type='l' ,col="red")
+plot(lst_plot$mu[,3],main='mu3 ',type='l' ,col="red")
+plot(lst_plot$mu[,4],main='mu4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+
+plot(lst_plot$tau[,1],main='tau 1 ',type='l' ,col="red")
+plot(lst_plot$tau[,2],main='tau 2 ',type='l' ,col="red")
+plot(lst_plot$tau[,3],main='tau 3 ',type='l' ,col="red")
+plot(lst_plot$tau[,4],main='tau 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+
+plot(lst_plot$w[,1],main='pi 1 ',type='l' ,col="red")
+plot(lst_plot$w[,2],main='pi 2 ',type='l' ,col="red")
+plot(lst_plot$w[,3],main='pi 3 ',type='l' ,col="red")
+plot(lst_plot$w[,4],main='pi 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$mu[,1]),main='mu1 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,2]),main='mu2 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,3]),main='mu3 ',type='l' ,col="red")
+plot(density(lst_plot$mu[,4]),main='mu4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$tau[,1]),main='tau 1 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,2]),main='tau 2 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,3]),main='tau 3 ',type='l' ,col="red")
+plot(density(lst_plot$tau[,4]),main='tau 4 ',type='l' ,col="red")
+
+par(mfrow=c(2, 2))
+plot(density(lst_plot$w[,1]),main='pi 1 ',type='l' ,col="red")
+plot(density(lst_plot$w[,2]),main='pi 2 ',type='l' ,col="red")
+plot(density(lst_plot$w[,3]),main='pi 3 ',type='l' ,col="red")
+plot(density(lst_plot$w[,4]),main='pi 4 ',type='l' ,col="red")
+```
+
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+combine_parameters_matrix <- function(lst_only4) {
+  mu_mat <- lst_only4$mu
+  tau_mat <- lst_only4$tau
+  w_mat <- lst_only4$w
+
+  # 获取维度
+  N <- nrow(mu_mat)
+  k <- ncol(mu_mat)
+
+  # 安全检查（可选）
+  stopifnot(all(dim(tau_mat) == c(N, k)), all(dim(w_mat) == c(N, k)))
+
+  # 合并
+  combined_mat <- cbind(mu_mat, tau_mat, w_mat)
+
+  # 设置列名
+  colnames(combined_mat) <- c(
+    paste0("mu", 1:k),
+    paste0("tau", 1:k),
+    paste0("w", 1:k)
+  )
+
+  return(combined_mat)
+}
+k <- 4
+plot_est <- combine_parameters_matrix(lst_only4)
+
+# trace plot for mu
+group_index <- 1
+plot_range <- c((1 + (group_index-1)*k )  : (group_index*k) )
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("mu", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("mu"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "mu", title = "Mu Traceplot") +
+  theme_minimal()
+
+# trace plot for tau
+group_index <- 2
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("tau", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("tau"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "tau", title = "Tau Traceplot") +
+  theme_minimal()
+
+# trace plot for w 
+group_index <- 3
+plot_range <- c((1 + (group_index-1)*k ) : (group_index*k))
+df <- as.data.frame(plot_est[, plot_range])
+colnames(df)[1:k] <- paste0("w", 1:k)
+df$iter <- 1:nrow(df) 
+
+df_long <- df %>%
+  pivot_longer(cols = starts_with("w"), 
+               names_to = "variable", 
+               values_to = "value")
+
+ggplot(df_long, aes(x = iter, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Iteration", y = "w", title = "Weight Traceplot") +
+  theme_minimal()
+```
+
+
+## Plot
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_labels = NULL,
+                                         input_mu = 1, input_sigma = 1) {
+  if (is.null(source_labels)) {
+    source_labels <- paste0("source", seq_along(mat_list))
+  }
+
+
+  true_vals <- switch(param_type,
+    mu  = mu_true,
+    tau = tau_true,
+    pi  = pi_true,
+    NULL
+  )
+
+  all_data <- lapply(seq_along(mat_list), function(i) {
+    mat <- mat_list[[i]]
+    label <- source_labels[[i]]
+
+    col_idx <- switch(param_type,
+      mu  = 1:k,
+      tau = (k + 1):(2 * k),
+      pi  = (2 * k + 1):(3 * k),
+      stop("param_type must be one of: 'mu', 'tau', 'pi'")
+    )
+
+    df <- as.data.frame(mat[, col_idx])
+    colnames(df) <- paste0(param_type, 1:k)
+
+    low_sd_flag <- any(apply(df, 2, sd, na.rm = TRUE) < 1e-4)
+
+    df_long <- df %>%
+      pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
+      mutate(
+        source = label,
+        parameter = case_when(
+          param_type == "mu"  ~ paste0("mu[", gsub("mu", "", parameter), "]"),
+          param_type == "tau" ~ paste0("tau[", gsub("tau", "", parameter), "]"),
+          param_type == "pi"  ~ paste0("pi[", gsub("pi", "", parameter), "]"),
+          TRUE ~ parameter
+        ),
+        low_sd = low_sd_flag
+      )
+
+    return(df_long)
+  })
+
+  df_combined <- bind_rows(all_data)
+
+  x_label_expr <- switch(param_type,
+    mu = expression(mu),
+    tau = expression(tau),
+    pi = expression(pi),
+    param_type
+  )
+
+  use_adjust <- any(df_combined$low_sd)
+
+  # 创建 ggplot 基础图
+  p <- ggplot(df_combined, aes(x = value, linetype = parameter, colour = source)) +
+    (if (use_adjust) geom_density(size = 1, alpha = 0.8, adjust = 0.01)
+     else geom_density(size = 1, alpha = 0.8)) +
+    theme_minimal() +
+    labs(
+      title = "",
+      x = x_label_expr, y = "Density",
+      colour = "Method", linetype = "Parameter"
+    ) +
+    scale_linetype_discrete(labels = function(x) parse(text = x))
+
+  # 添加真值线：不使用 aes，而是直接指定 xintercept
+  if (!is.null(true_vals)) {
+    for (i in seq_along(true_vals)) {
+      p <- p + geom_vline(
+        xintercept = true_vals[i],
+        colour = "black",
+        linetype = "dashed"
+      )
+    }
+  }
+
+  return(p)
+}
+
+
+
+
+```
+
+```{r}
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_DIC_3,est_RJMCMC_only3_mat ),
+  param_type = "mu",
+  k = 3,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+cat("plot___2","\n")
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_DIC_3,est_RJMCMC_only3_mat ),
+  param_type = "tau",
+  k = 3,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+
+cat("plot___1","\n")
+plot_posterior_density_multi(
+  list(est_fearnhead, est_MCMC_DIC_3,est_RJMCMC_only3_mat ),
+  param_type = "pi",
+  k = 3,
+  source_labels = c("PF", "MCMC", "RJMCMC")
+)
+```
+
+
+
+## compare with MC
+
+```{r}
+
+source("../../dir_manager.r")
+
+happy_path <- paste0(dir_path, "/particle_filter/gumbel/data/")
+
+# Laplace
+weights_laplace <- read.csv(file.path(happy_path, "weights_n50eta5phi10a2b1mutrue036tautrue482_laplace.csv"))$x
+particles_df_laplace <- read.csv(file.path(happy_path, "particles_n50eta5phi10a2b1mutrue036tautrue482_laplace.csv"))
+particles_laplace <- lapply(split(particles_df_laplace, seq(nrow(particles_df_laplace))), function(row) as.numeric(na.omit(unlist(row))))
+
+# Ratio 0.1
+weights_ratio01 <- read.csv(file.path(happy_path, "weights_n50eta5phi10a2b1mutrue036tautrue482_ratio01.csv"))$x
+particles_df_ratio01 <- read.csv(file.path(happy_path, "particles_n50eta5phi10a2b1mutrue036tautrue482_ratio01.csv"))
+particles_ratio01 <- lapply(split(particles_df_ratio01, seq(nrow(particles_df_ratio01))), function(row) as.numeric(na.omit(unlist(row))))
+
+# Ratio 0.25
+weights_ratio025 <- read.csv(file.path(happy_path, "weights_n50eta5phi10a2b1mutrue036tautrue482_ratio025.csv"))$x
+particles_df_ratio025 <- read.csv(file.path(happy_path, "particles_n50eta5phi10a2b1mutrue036tautrue482_ratio025.csv"))
+particles_ratio025 <- lapply(split(particles_df_ratio025, seq(nrow(particles_df_ratio025))), function(row) as.numeric(na.omit(unlist(row))))
+
+# Ratio 0.5
+weights_ratio05 <- read.csv(file.path(happy_path, "weights_n50eta5phi10a2b1mutrue036tautrue482_ratio05.csv"))$x
+particles_df_ratio05 <- read.csv(file.path(happy_path, "particles_n50eta5phi10a2b1mutrue036tautrue482_ratio05.csv"))
+particles_ratio05 <- lapply(split(particles_df_ratio05, seq(nrow(particles_df_ratio05))), function(row) as.numeric(na.omit(unlist(row))))
+
+# Original (no suffix)
+weights_base <- read.csv(file.path(happy_path, "weights_n50eta5phi10a2b1mutrue036tautrue482.csv"))$x
+particles_df_base <- read.csv(file.path(happy_path, "particles_n50eta5phi10a2b1mutrue036tautrue482.csv"))
+particles_base <- lapply(split(particles_df_base, seq(nrow(particles_df_base))), function(row) as.numeric(na.omit(unlist(row))))
+
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_helper.r"))
+set.seed(629)
+
+samples_to_get <- 10000
+total_iter <- 1500
+burn_in <- 500
+k_target <- 3
+first_n <- 10
+
+process_pair <- function(particles, weights, label) {
+  cat("\nProcessing:", label, "\n")
+
+  mid_list <- merge_same(particles, weights, toPrint = FALSE)
+  uni_particles <- mid_list$uni_particles
+  uni_w <- mid_list$uni_w
+
+  N_uni_particles <- length(uni_particles)
+  cat("unique particles: ", N_uni_particles, "\n")
+
+  print(sapply(uni_particles[1:first_n], function(s) length(unique(s))))
+  print(uni_w[1:first_n])
+
+  k_index <- get_particle_indices_by_k(uni_particles, k_target)
+  k_particles <- uni_particles[k_index]
+  k_w <- uni_w[k_index]
+  k_w <- k_w / sum(k_w)
+
+  est_fearnhead <- get_posterior_parameters_gumbel(
+    k_particles, k_w, k_target, samples_to_get,
+    y, eta, phi, a, b,
+    MHsd_mu_l = c(0.4, 0.2, 0.3),
+    MHsd_tau_l = c(0.8, 4, 1),
+    total_iter = total_iter,
+    burn_in = burn_in
+  )
+
+  assign(paste0("uni_particles_", label), uni_particles, envir = .GlobalEnv)
+  assign(paste0("uni_w_", label), uni_w, envir = .GlobalEnv)
+  assign(paste0("est_fearnhead_", label), est_fearnhead, envir = .GlobalEnv)
+}
+
+# Run for each particle-weight pair
+process_pair(particles_laplace, weights_laplace, "laplace")
+process_pair(particles_ratio01, weights_ratio01, "ratio01")
+process_pair(particles_ratio025, weights_ratio025, "ratio025")
+process_pair(particles_ratio05, weights_ratio05, "ratio05")
+process_pair(particles_base, weights_base, "base")
+```
+
+
+```{r}
+# Combine all est_fearnhead into a list
+mat_list <- list(
+  "MC(2000+1000)" = est_fearnhead_base,
+  "MC(1000+500)" = est_fearnhead_ratio05,
+  "MC(500+250)"  = est_fearnhead_ratio025,
+  "MC(200+100)"  = est_fearnhead_ratio01,
+  "Laplace"      = est_fearnhead_laplace
+)
+
+source_labels <- names(mat_list)
+k <- 3  # Assuming you're using k = 3
+
+# Plot mu
+plot_mu <- plot_posterior_density_multi(
+  mat_list = mat_list,
+  param_type = "mu",
+  k = k,
+  source_labels = source_labels
+)
+print(plot_mu)
+
+# Plot tau
+plot_tau <- plot_posterior_density_multi(
+  mat_list = mat_list,
+  param_type = "tau",
+  k = k,
+  source_labels = source_labels
+)
+print(plot_tau)
+
+# Plot pi
+plot_pi <- plot_posterior_density_multi(
+  mat_list = mat_list,
+  param_type = "pi",
+  k = k,
+  source_labels = source_labels
+)
+print(plot_pi)
+```
+
+
+
+## Explore acceptance
+
+```{r}
+source(file.path(dir_path, "gumbel", "rjmcmc_split_combine.R"))
+is_debug <- TRUE
+
+xxx <- 39986
+para <- est_RJMCMC_raw[[1]][(xxx+10000),]
+
+X <- y
+Z <- all_Z [xxx,]
+K <- 10
+k <- para[1]
+mu <- para[2:(2+k -1)]
+tau <- para[(2+k):(2+2*k-1)]
+w <- para[(2+2*k):(2+3*k-1)]
+
+n <- 50
+Xv <- list("vector", length = k)
+nv <- rep(0, k)
+for (j in c(1:k)) {
+  Xv[[j]] <- y[Z == j]
+  nv[j] <- length(Xv[[j]])
+}
+
+xi <- eta
+kappa <- 1/phi
+alpha <- a
+this_beta <- b
+lambda <- 3
+delta <- 1
+
+lst <- generate_lst(X, Z, K, k, w, mu, tau, n, Xv, nv,
+                        xi, kappa, alpha, this_beta, lambda, delta,
+                        birth_pr, death_pr)
+lst2 <- split_combine(lst)
+```
+
+
+```{r}
+merge_gaussian_components <- function(w1, w2, mu1, mu2, sigma1, sigma2) {
+  # step 1: 合并权重
+  w_star <- w1 + w2
+  
+  # step 2: 合并后的均值
+  mu_star <- (w1 * mu1 + w2 * mu2) / w_star
+  
+  # step 3: 合并后的 mu^2 + sigma^2
+  mu2_sigma2_star <- (w1 * (mu1^2 + sigma1) + w2 * (mu2^2 + sigma2)) / w_star
+  
+  # step 4: 合并后的方差 (sigma_star)
+  sigma_star <- mu2_sigma2_star - mu_star^2
+  
+  # 返回全部中间量
+  list(
+    w_star = w_star,
+    mu_star = mu_star,
+    mu2_sigma2_star = mu2_sigma2_star,
+    sigma_star = sigma_star
+  )
+}
+
+
+print(merge_components(0.2, 0.1, 5.8, 6.3, 5, 1))
+```
+```{r}
+merge_precision_components <- function(w1, w2, mu1, mu2, tau1, tau2) {
+  # 合并权重
+  w_star <- w1 + w2
+  
+  # 合并均值
+  mu_star <- (w1 * mu1 + w2 * mu2) / w_star
+  
+  # 计算tau_star的倒数
+  inv_tau_star <- (w1 / w_star) * (mu1^2 + 1 / tau1) +
+                  (w2 / w_star) * (mu2^2 + 1 / tau2) -
+                  mu_star^2
+  
+  # 合并后的精度
+  tau_star <- 1 / inv_tau_star
+  
+  # 返回所有结果
+  list(
+    w_star = w_star,
+    mu_star = mu_star,
+    tau_star = tau_star,
+    sigma2_star = 1 / tau_star # 合并后的方差（可选）
+  )
+}
+
+print(merge_components(0.2, 0.1, 5.8, 6.3, 1/5, 1))
+
+```
+

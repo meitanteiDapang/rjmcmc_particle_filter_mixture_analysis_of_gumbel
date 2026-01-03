@@ -1,0 +1,172 @@
+---
+title: "Single Gumbel"
+author: "Zhonghao Yang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## first run
+
+```{r}
+library(evd)
+library(truncnorm)
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_gumbel/single_gumbel.r"))
+
+
+set.seed(6291117)
+# Data
+n <- 1000
+sim_mu <- c(5)
+sim_tau <- c(10)
+
+X <- rgumbel(n, sim_mu[1], 1/sim_tau[1])
+
+# Prior
+xi <- 0
+kappa <- 0.001
+a <- 0.001
+b <- 0.001
+
+# proposal parameter
+MHsd_mu = 0.005
+MHsd_tau = 0.5
+
+# initial value
+mu <- rnorm(1,xi,kappa)
+tau <- rgamma(1, a, b)
+
+# Start
+iter <- 20000
+burn.in <- iter/5
+
+raw_res <- mcmc_single_gumbel(iter, X, 
+                               xi, kappa, a, b, #  prior parameters
+                               mu, tau,
+                              MHsd_mu, MHsd_tau) # initial value
+
+est_mcmc_single_gumbel <- raw_res$parameter
+mu_acc_rate <- raw_res$mu_acc_rate
+tau_acc_rate <- raw_res$tau_acc_rate
+
+cat("mu acceptance ratio: ", mu_acc_rate, "\n")
+cat("tau acceptance ratio: ", tau_acc_rate, "\n")
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+plot_trace_and_density(est_mcmc_single_gumbel, burn.in, iter, "mu", k=1)   # for mu
+plot_trace_and_density(est_mcmc_single_gumbel, burn.in, iter, "tau", k=1)  # for tau
+```
+
+
+
+
+
+
+
+
+
+
+## MSE, BIAS, COVERAGE
+
+```{r}
+library(evd)
+library(truncnorm)
+source(file.path(dir_path,"rjmcmc_gumbel/single_gumbel.r"))
+
+
+set.seed(6291117)
+iter <- 30000
+burn.in <- iter/5
+
+N = 100 # number of group of data
+
+
+# Data
+sim_mu <- c(5)
+sim_tau <- c(10)
+n <- 300 # number of simulated data
+
+
+# Prior
+xi <- 0
+kappa <- 0.001
+a <- 0.001
+b <- 0.001
+
+# proposal parameter
+MHsd_mu = 0.005
+MHsd_tau = 0.5
+
+
+
+my_list <- vector("list", N)
+
+for (i in c(1:N)) {
+  cat("N: ", i, "\n")
+  X <- rgumbel(n, sim_mu[1], 1/sim_tau[1])
+  
+  # initial value
+  mu <- rnorm(1,xi,kappa)
+  tau <- max(rgamma(1, a, b), tau_threshold)
+  
+  res <- mcmc_single_gumbel(iter, X, 
+                                 xi, kappa, a, b, #  prior parameters
+                                 mu, tau, # initial value
+                                  MHsd_mu, MHsd_tau,
+                                 verbose = FALSE)
+  
+  est <- res$parameter
+  my_list[[i]] <- est[(burn.in + 1):iter,]
+}
+
+
+
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/bias_mse_coverage.r"))
+
+mu_bias <- get_bias_single(my_list, N, (iter-burn.in), 1,
+                        sim_mu[1])
+tau_bias <- get_bias_single(my_list, N, (iter-burn.in), 2,
+                        sim_tau[1])
+cat("bias of mu: ", mu_bias, "\nbias of tau: ", tau_bias, "\n")
+
+mu_mse <- get_mse_single(my_list, N, (iter-burn.in), 1,
+                        sim_mu[1])
+tau_mse <- get_mse_single(my_list, N, (iter-burn.in), 2,
+                        sim_tau[1])
+cat("mse of mu: ", mu_mse, "\nmse of tau: ", tau_mse, "\n")
+```
+## Coverage Table
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/bias_mse_coverage.r"))
+mu_converage_table <- get_coverage_table(my_list, N, (iter-burn.in), 1, 0.95,
+                        sim_mu[1])
+tau_converage_table <- get_coverage_table(my_list, N, (iter-burn.in), 2, 0.95,
+                        sim_tau[1])
+mu_converage <- sum(sim_mu[1] >= mu_converage_table$lower & 
+                      sim_mu[1] <= mu_converage_table$upper)/N
+tau_converage <- sum(sim_tau[1] >= tau_converage_table$lower & 
+                      sim_tau[1] <= tau_converage_table$upper)/N
+cat("converage of mu: ", mu_converage, "\ncoverage of tau", tau_converage, "\n")
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+plot_coverage(mu_converage_table, expression(mu), sim_mu[1])
+plot_coverage(tau_converage_table, expression(tau), sim_tau[1])
+```
+
+
+

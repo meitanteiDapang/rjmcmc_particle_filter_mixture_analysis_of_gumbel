@@ -1,0 +1,1270 @@
+---
+title: "pf_normal_k"
+author: "Zhonghao Yang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+
+# run k = 2
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/normal_not_fearnhead/pf_normal_k.r"))
+set.seed(6291217)
+
+mu_true <- c(5, 8)
+sigma_true <- c(3, 10)
+pi_true <- c(7/10, 3/10)
+k <- 2
+n <- 1000
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  cat("mean: ", mean(y.k), " sd: ", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+
+```
+
+
+
+```{r}
+source("pf_normal_k.R")
+set.seed(624177)
+
+# particles number
+m <- 500000
+
+# parameters for initial particles
+a_mu <- 0
+b_mu <- 20
+a_sigma <- 0
+b_sigma <- 15
+delta <- 1
+
+tic("Start parameter-based k=2 N=50000 pf:")
+res <- pf_normal_k(y, m,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                    verbose = TRUE)
+toc()
+mu <- res$mu
+sigma <- res$sigma
+pi_ <- res$pi_
+w <- res$w
+
+
+
+
+```
+
+```{r}
+source("pf_normal_k.R")
+pp <- lot_resample_mix_params(mu, sigma, pi_, w,
+                        mu_true = mu_true,
+                        sigma_true = sigma_true,
+                        pi_true = pi_true,
+                        M = 10000,  
+                        adjust = 1.2)
+ggsave(
+  file.path(pic_path, "pf_fmm", "k2N500000.png"),
+  pp,
+  width = 8,
+  height = 5
+)
+```
+
+
+
+
+```{r}
+N <- length(w)
+source("pf_normal_k.R")
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+cat("estimate_mean: ", "\n")
+print(estimate_mean)
+cat("N: ", N, "\n" )
+```
+
+
+
+
+
+
+
+
+
+```{r}
+print(head(sort(w, decreasing=TRUE), 10))
+top1_idx <- order(w, decreasing = TRUE)[1:1]
+print(mu[top1_idx,])
+print(sigma[top1_idx, ])
+print(pi_[top1_idx, ])
+```
+
+## different order
+```{r}
+source("pf_normal_k.R")
+set.seed(6291217)
+
+mu_true <- c(5, 8)
+sigma_true <- c(3, 10)
+pi_true <- c(7/10, 3/10)
+k <- 2
+n <- 3000
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+
+for (seedsd in c(1:4)) {
+  set.seed(seedsd)
+  print(seedsd)
+  y <- sample(y)
+  
+  set.seed(624177)
+  
+  # particles number
+  m <- 10
+  
+  # parameters for initial particles
+  a_mu <- -20
+  b_mu <- 20
+  a_sigma <- 0
+  b_sigma <- 30
+  delta <- 1
+  
+  # propagating parameters
+  sd_mu <- 0.05
+  sd_sigma <- 0.05
+  sd_pi <- 0.005
+  
+  res <- pf_normal_k(y, m,k,
+                     a_mu, b_mu, a_sigma, b_sigma, delta,
+                     sd_mu, sd_sigma, sd_pi, verbose = FALSE)
+  mu <- res$mu
+  sigma <- res$sigma
+  pi_ <- res$pi_
+  w <- res$w
+  
+  
+  N <- length(w)
+  estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  cat("estimate_mean: ", "\n")
+  print(estimate_mean)
+  cat("N: ", N, "\n" )
+  
+}
+```
+
+
+
+## bias
+```{r}
+source("pf_normal_k.R")
+set.seed(6291217)
+MM <- 10
+k <- 2
+n <- 600
+
+bias_mu <- rep(0, k)
+bias_sigma <- rep(0, k)
+bias_pi <- rep(0, k)
+
+mse_mu <- rep(0, k)
+mse_sigma <- rep(0, k)
+mse_pi <- rep(0, k)
+
+for(iterM in 1:MM) {
+  cat("iterM: ", iterM,"\n")
+  mu_true <- c(5, 8)
+  sigma_true <- c(3, 10)
+  pi_true <- c(7/10, 3/10)
+  
+  
+  
+  y <- c()
+  
+  for(i in c(1:k)){
+    y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+    y <- c(y, y.k)
+  }
+  
+  y <- sample(y)
+  
+  # particles number
+  m <- 10
+  
+  # parameters for initial particles
+  a_mu <- 0
+  b_mu <- 20
+  a_sigma <- 0
+  b_sigma <- 15
+  delta <- 1
+  
+  # propagating parameters
+  sd_mu <- 0.05
+  sd_sigma <- 0.05
+  sd_pi <- 0.005
+  
+  res <- pf_normal_k(y, m,k,
+                     a_mu, b_mu, a_sigma, b_sigma, delta,
+                     sd_mu, sd_sigma, sd_pi, verbose = TRUE)
+  mu <- res$mu
+  sigma <- res$sigma
+  pi_ <- res$pi_
+  w <- res$w
+  N <- length(w)
+  estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  
+  bias_mu <- bias_mu + 1 / MM * estimate_mean$mu
+  bias_sigma <- bias_sigma + 1 / MM * estimate_mean$sigma
+  bias_pi <- bias_pi + 1 / MM * estimate_mean$pi_
+  
+  mse_mu <- mse_mu + 1 / MM * (estimate_mean$mu - mu_true)^2
+  mse_sigma <- mse_sigma + 1 / MM * (estimate_mean$sigma - sigma_true)^2
+  mse_pi <- mse_pi + 1 / MM * (estimate_mean$pi_ - pi_true)^2
+  
+}
+
+print(bias_mu)
+print(bias_sigma)
+print(bias_pi)
+
+print(mse_mu)
+print(mse_sigma)
+print(mse_pi)
+
+```
+
+
+
+
+## another bias, mse
+
+```{r}
+source("pf_normal_k.R")
+set.seed(6291217)
+MM <- 10
+k <- 2
+n <- 200
+
+bias_mu <- rep(0, k)
+bias_sigma <- rep(0, k)
+bias_pi <- rep(0, k)
+
+mse_mu <- rep(0, k)
+mse_sigma <- rep(0, k)
+mse_pi <- rep(0, k)
+
+for(iterM in 1:MM) {
+  cat("iterM: ", iterM,"\n")
+  mu_true <- c(5, 8)
+  sigma_true <- c(3, 10)
+  pi_true <- c(7/10, 3/10)
+  
+  
+  
+  y <- c()
+  
+  for(i in c(1:k)){
+    y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+    y <- c(y, y.k)
+  }
+  
+  y <- sample(y)
+  
+  # particles number
+  m <- 10
+  
+  # parameters for initial particles
+  a_mu <- 0
+  b_mu <- 20
+  a_sigma <- 0
+  b_sigma <- 15
+  delta <- 1
+  
+  # propagating parameters
+  sd_mu <- 0.05
+  sd_sigma <- 0.05
+  sd_pi <- 0.005
+  
+  res <- pf_normal_k(y, m,k,
+                     a_mu, b_mu, a_sigma, b_sigma, delta,
+                     sd_mu, sd_sigma, sd_pi, verbose = TRUE)
+  mu <- res$mu
+  sigma <- res$sigma
+  pi_ <- res$pi_
+  w <- res$w
+  N <- length(w)
+  estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  
+  bias_mu <- bias_mu + 1 / MM * estimate_mean$mu
+  bias_sigma <- bias_sigma + 1 / MM * estimate_mean$sigma
+  bias_pi <- bias_pi + 1 / MM * estimate_mean$pi_
+  
+  mse_mu <- mse_mu + 1 / MM * (estimate_mean$mu - mu_true)^2
+  mse_sigma <- mse_sigma + 1 / MM * (estimate_mean$sigma - sigma_true)^2
+  mse_pi <- mse_pi + 1 / MM * (estimate_mean$pi_ - pi_true)^2
+  
+}
+
+bias_mu <- bias_mu - mu_true
+bias_sigma <- bias_sigma - sigma_true
+bias_pi <- bias_pi - pi_true
+
+print(bias_mu)
+print(bias_sigma)
+print(bias_pi)
+
+print(mse_mu)
+print(mse_sigma)
+print(mse_pi)
+```
+
+
+# another k= 2
+```{r}
+source("pf_normal_k.R")
+set.seed(6291217)
+
+mu_true <- c(5, 8)
+sigma_true <- c(3, 10)
+pi_true <- c(7/10, 3/10)
+k <- 2
+
+
+
+
+
+n <- 3000
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+    cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated sigma k= ",i," :", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+```
+
+
+
+```{r}
+source("pf_normal_k.R")
+set.seed(6277)
+y <- sample(y)
+# particles number
+m <- 7
+
+# parameters for initial particles
+a_mu <- 0
+b_mu <- 20
+a_sigma <- 0
+b_sigma <- 15
+delta <- 1
+
+# propagating parameters
+sd_mu <- 0.05
+sd_sigma <- 0.05
+sd_pi <- 0.005
+
+res <- pf_normal_k(y, m,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                   sd_mu, sd_sigma, sd_pi, verbose = TRUE)
+mu <- res$mu
+sigma <- res$sigma
+pi_ <- res$pi_
+w <- res$w
+
+N <- length(w)
+source("pf_normal_k.R")
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+cat("estimate_mean: ", "\n")
+print(estimate_mean)
+cat("N: ", N, "\n" )
+```
+
+
+# run k =3 
+```{r}
+source("pf_normal_k.R")
+set.seed(6291217)
+
+mu_true <- c(5, 8)
+sigma_true <- c(3, 10)
+pi_true <- c(7/10, 3/10)
+k <- 2
+
+mu_true <- c(1, 2, 3)
+sigma_true <- c(1, 2, 3)
+pi_true <- c(2/10, 3/10, 5/10)
+k <- 3
+
+
+
+
+n <- 3000
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+    cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated sigma k= ",i," :", sd(y.k), "\n")
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+```
+
+
+
+```{r}
+source("pf_normal_k.R")
+set.seed(624177)
+
+# particles number
+m <- 5
+
+# parameters for initial particles
+a_mu <- 0
+b_mu <- 5
+a_sigma <- 0
+b_sigma <- 5
+delta <- 1
+
+# propagating parameters
+sd_mu <- 0.05
+sd_sigma <- 0.05
+sd_pi <- 0.005
+
+res <- pf_normal_k(y, m,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                   sd_mu, sd_sigma, sd_pi, verbose = TRUE)
+mu <- res$mu
+sigma <- res$sigma
+pi_ <- res$pi_
+w <- res$w
+
+N <- length(w)
+source("pf_normal_k.R")
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+cat("estimate_mean: ", "\n")
+print(estimate_mean)
+cat("N: ", N, "\n" )
+```
+
+# compare gibss
+
+## nothing
+
+```{r}
+source("pf_normal_k.R")
+set.seed(6291117)
+
+mu_true <- c(7, 7.8)
+sigma_true <- c(0.2, 0.1)
+pi_true <- c(7/10, 3/10)
+k <- 2
+n <- 200
+
+y <- c()
+
+real_parameter <- c(0, 0, 0, 0, 0.7, 0.3)
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  real_parameter[i] <- mean(y.k)
+  real_parameter[k + i] <- sd(y.k)
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+
+plot(y)
+```
+
+
+```{r}
+source("../normal/normal_k.r")
+set.seed(6291117)
+
+iter <- 5000
+burn.in <- iter/5
+
+# prior
+xi <- 0
+kappa <- 0.001
+alpha <- 0.001
+beta <- 0.001
+delta <- 10
+
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k) )
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter, y, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z,
+                          input=k
+                          )
+est1 <- est[[1]]
+
+```
+
+
+
+
+
+```{r}
+# to sd
+est1[, 3:4] <- 1 / sqrt(est1[, 3:4])
+est_gibbs_1 <- est1[(burn.in + 1): iter,]
+
+
+print(colMeans(est_gibbs_1))
+```
+
+
+```{r}
+source("pf_normal_k.R")
+set.seed(6291117)
+
+# particles number
+N <- 1e6
+
+# parameters for initial particles
+a_mu <- 6.8
+b_mu <- 8
+a_sigma <- 0.05
+b_sigma <- 0.25
+delta <- 1
+
+# propagating parameters
+sd_mu <- 0.01
+sd_sigma <- 0.0007
+sd_pi <- 0.001
+
+res <- pf_normal_k(y, N,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                   sd_mu, sd_sigma, sd_pi, verbose = TRUE)
+mu <- res$mu
+sigma <- res$sigma
+pi_ <- res$pi_
+w <- res$w
+
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  cat("estimate_mean: ", "\n")
+  print(estimate_mean)
+```
+```{r}
+head_w <- head(sort(w, decreasing=TRUE), n=100)
+print(head_w)
+print(sum(head_w))
+```
+
+
+
+```{r}
+set.seed(6291117)
+draws_n <- 20000
+
+draws_index <- sample(c(1:N), replace=TRUE, prob=w, size=draws_n)
+est_pf_1 <- matrix(NA, nrow = draws_n, ncol = 3 * k)
+
+# Fill each block using cbind-style indexing
+est_pf_1[, 1:k] <- mu[draws_index, ]
+est_pf_1[, (k + 1):(2 * k)] <- sigma[draws_index, ]
+est_pf_1[, (2 * k + 1):(3 * k)] <- pi_[draws_index, ]
+```
+
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+# Convert the matrix to a data frame
+df_MCMC <- as.data.frame(est_gibbs_1)
+df_pf <- as.data.frame(est_pf_1)
+
+# Plot density of the first column
+compare1 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V1, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V1, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[1], colour = "Data"))+
+  labs(
+    title = expression("(a) " * mu[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare2 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V2, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V2, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[2], colour = "Data"))+
+  labs(
+    title = expression("(b) " * mu[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare3 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V3, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V3, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[3], colour = "Data"))+
+  labs(
+    title = expression("(c) " * sigma[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare4 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V4, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V4, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[4], colour = "Data"))+
+  labs(
+    title = expression("(d) " * sigma[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare5 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V5, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V5, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[5], colour = "Data"))+
+  labs(
+    title = expression("(e) " * pi[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare6 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V6, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V6, colour="PF")) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[6], colour = "Data"))+
+  labs(
+    title = expression("(f) " * pi[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+combined_compare <- (compare1 + compare2 + compare3) /
+                    (compare4 + compare5 + compare6) +
+                    plot_layout(guides = "collect") &
+                    theme(legend.position = "bottom")
+
+combined_compare
+```
+
+
+### different bandwith
+
+```{r}
+library(ggplot2)
+library(patchwork)
+# Convert the matrix to a data frame
+df_MCMC <- as.data.frame(est_gibbs_1)
+df_pf <- as.data.frame(est_pf_1)
+
+# Plot density of the first column
+compare1 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V1, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V1, colour="PF"), bw=0.02) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[1], colour = "Data"))+
+  labs(
+    title = expression("(a) " * mu[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare2 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V2, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V2, colour="PF"), bw=0.01) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[2], colour = "Data"))+
+  labs(
+    title = expression("(b) " * mu[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare3 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V3, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V3, colour="PF"), bw=0.015) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[3], colour = "Data"))+
+  labs(
+    title = expression("(c) " * sigma[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare4 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V4, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V4, colour="PF"), bw=0.015) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[4], colour = "Data"))+
+  labs(
+    title = expression("(d) " * sigma[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare5 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V5, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V5, colour="PF"), bw=0.015) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[5], colour = "Data"))+
+  labs(
+    title = expression("(e) " * pi[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare6 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC, aes(x = V6, colour="MCMC")) +
+  geom_density(data=df_pf, aes(x = V6, colour="PF"),bw=0.015) +
+  scale_colour_manual(name = "Type", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[6], colour = "Data"))+
+  labs(
+    title = expression("(f) " * pi[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+combined_compare <- (compare1 + compare2 + compare3) /
+                    (compare4 + compare5 + compare6) +
+                    plot_layout(guides = "collect") &
+                    theme(legend.position = "bottom")
+
+combined_compare
+```
+
+
+
+##  n = 200
+
+```{r}
+source("pf_normal_k.R")
+set.seed(629)
+
+mu_true <- c(5, 8)
+sigma_true <- c(2/5, 1/5)
+pi_true <- c(7/10, 3/10)
+k <- 2
+n1<- 200
+
+y <- c()
+
+real_parameter1 <- c(0, 0, 0, 0, 0.7, 0.3)
+
+for(i in c(1:k)){
+  y.k <- rnorm(n1*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  real_parameter1[i] <- mean(y.k)
+  real_parameter1[k + i] <- sd(y.k)
+  y <- c(y, y.k)
+}
+
+y <- sample(y)
+y1 <- y
+real_parameter <- real_parameter1
+print(real_parameter)
+plot(density(y))
+```
+
+
+```{r}
+source("../normal/normal_k.r")
+set.seed(6291117)
+
+iter <- 5000
+burn.in <- iter/5
+
+# prior
+xi <- 0
+kappa <- 0.001
+alpha <- 0.001
+beta <- 0.001
+delta <- 1
+
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k) )
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter, y1, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z,
+                          input=k
+                          )
+est1 <- est[[1]]
+
+
+# to sd
+est1[, 3:4] <- 1 / sqrt(est1[, 3:4])
+est_gibbs_1_n200 <- est1[(burn.in + 1): iter,]
+
+
+print(colMeans(est_gibbs_1_n200))
+```
+
+                                    
+```{r}
+source("pf_normal_k.R")
+set.seed(6291117)
+
+# particles number
+N <- 1e6
+
+# parameters for initial particles
+a_mu <- 4
+b_mu <- 10
+a_sigma <- 0.1
+b_sigma <- 0.5
+delta <- 1
+
+# propagating parameters
+sd_mu <- 0.01
+sd_sigma <- 0.0007
+sd_pi <- 0.001
+```
+
+
+
+```{r}
+mu <- t(apply(matrix(
+  rtruncnorm(n = N * k, a = a_mu, b = b_mu, mean = 0, sd = 1000),
+  nrow = N
+), 1, sort))
+
+sigma <- matrix(
+  runif(n = N * k, a_sigma, b_sigma),
+  nrow = N
+)
+
+pi_ <- matrix(
+  runif(n = N * k, 0 + low_threshold, 1 - low_threshold),
+  nrow = N
+)
+pi_ <- sweep(pi_, 1, rowSums(pi_), FUN = "/")
+w <- rep(1 / N, N)
+
+    
+good <- list(mu = mu, sigma = sigma, pi_ = pi_, w = w)
+
+```
+
+
+
+```{r}
+
+
+res <- pf_normal_k(y1, N,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                   sd_mu, sd_sigma, sd_pi, 
+                   is_initial=FALSE, last=good,
+                   verbose = TRUE)
+mu <- res$mu
+sigma <- res$sigma
+pi_ <- res$pi_
+w <- res$w
+
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  cat("estimate_mean: ", "\n")
+  print(estimate_mean)
+  
+set.seed(6291117)
+draws_n <- 20000
+
+draws_index <- sample(c(1:N), replace=TRUE, prob=w, size=draws_n)
+est_pf_1_n200 <- matrix(NA, nrow = draws_n, ncol = 3 * k)
+
+# Fill each block using cbind-style indexing
+est_pf_1_n200[, 1:k] <- mu[draws_index, ]
+est_pf_1_n200[, (k + 1):(2 * k)] <- sigma[draws_index, ]
+est_pf_1_n200[, (2 * k + 1):(3 * k)] <- pi_[draws_index, ]
+```
+
+
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+# Convert the matrix to a data frame
+df_MCMC_n200 <- as.data.frame(est_gibbs_1_n200)
+df_pf_n200 <- as.data.frame(est_pf_1_n200)
+
+# Plot density of the first column
+compare1 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_pf_n200, aes(x = V1, colour="PF")) +
+  geom_density(data=df_MCMC_n200, aes(x = V1, colour="MCMC")) +
+  
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[1], colour = "Data"))+
+  labs(
+    title = expression("(a) " * mu[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare2 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n200, aes(x = V2, colour="MCMC")) +
+  geom_density(data=df_pf_n200, aes(x = V2, colour="PF")) +
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[2], colour = "Data"))+
+  labs(
+    title = expression("(b) " * mu[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare3 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n200, aes(x = V3, colour="MCMC")) +
+  geom_density(data=df_pf_n200, aes(x = V3, colour="PF")) +
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[3], colour = "Data"))+
+  labs(
+    title = expression("(c) " * sigma[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare4 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n200, aes(x = V4, colour="MCMC")) +
+  geom_density(data=df_pf_n200, aes(x = V4, colour="PF")) +
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[4], colour = "Data"))+
+  labs(
+    title = expression("(d) " * sigma[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare5 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n200, aes(x = V5, colour="MCMC")) +
+  geom_density(data=df_pf_n200, aes(x = V5, colour="PF")) +
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[5], colour = "Data"))+
+  labs(
+    title = expression("(e) " * pi[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare6 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n200, aes(x = V6, colour="MCMC")) +
+  geom_density(data=df_pf_n200, aes(x = V6, colour="PF")) +
+  scale_colour_manual(name = "Legend", values = c("MCMC" = "red", 
+                                                "Data"="blue", "PF"="green")) +
+  geom_vline(aes(xintercept = real_parameter[6], colour = "Data"))+
+  labs(
+    title = expression("(f) " * pi[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+combined_compare <- (compare1 + compare2 + compare3) /
+                    (compare4 + compare5 + compare6) +
+                    plot_layout(guides = "collect") &
+                    theme(legend.position = "bottom")
+
+combined_compare
+```
+
+
+## n=1000
+```{r}
+source("pf_normal_k.R")
+set.seed(888)
+
+
+n2 <- 800
+
+y2 <- c()
+
+real_parameter2 <- c(0, 0, 0, 0, 0.7, 0.3)
+
+for(i in c(1:k)){
+  y.k <- rnorm(n2*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  real_parameter2[i] <- mean(y.k)
+  real_parameter2[k + i] <- sd(y.k)
+  y2 <- c(y2, y.k)
+}
+
+y2 <- sample(y2)
+y <- c(y1, y2)
+
+real_parameter <- (real_parameter1 * n1  + real_parameter2 * n2)/(n1  + n2)
+print(real_parameter)
+
+```
+
+
+```{r}
+source("../normal/normal_k.r")
+set.seed(6291117)
+
+iter <- 5000
+burn.in <- iter/5
+
+# prior
+xi <- 0
+kappa <- 0.001
+alpha <- 0.001
+beta <- 0.001
+delta <- 1
+
+mu <- rnorm(k,xi,kappa)
+tau <- rgamma(k, alpha, beta)
+pi <- rdirichlet(1, rep(1, k) )
+Z <- rep(1:k, length.out=length(y))
+est <- mcmc.three.normal.strict.order.resample(iter, y, 
+                          xi,kappa,alpha,beta,delta,
+                          mu, tau, pi, Z,
+                          input=k
+                          )
+est1 <- est[[1]]
+
+# to sd
+est1[, 3:4] <- 1 / sqrt(est1[, 3:4])
+est_gibbs_1_n500 <- est1[(burn.in + 1): iter,]
+
+
+print(colMeans(est_gibbs_1_n500))
+
+```
+
+
+
+
+
+```{r}
+source("pf_normal_k.R")
+set.seed(6291117)
+
+# particles number
+N <- 1*1e6
+
+
+
+res2 <- pf_normal_k(y2, N,k,
+                   a_mu, b_mu, a_sigma, b_sigma, delta,
+                   sd_mu, sd_sigma, sd_pi, 
+                   is_initial = TRUE, last= res,
+                   verbose = TRUE)
+mu <- res2$mu
+sigma <- res2$sigma
+pi_ <- res2$pi_
+w <- res2$w
+
+estimate_mean <- get_estimate_mean_k(mu, sigma,pi_, w)
+  cat("estimate_mean: ", "\n")
+  print(estimate_mean)
+
+set.seed(6291117)
+draws_n <- 20000
+
+draws_index <- sample(c(1:N), replace=TRUE, prob=w, size=draws_n)
+est_pf_1_n500 <- matrix(NA, nrow = draws_n, ncol = 3 * k)
+
+# Fill each block using cbind-style indexing
+est_pf_1_n500[, 1:k] <- mu[draws_index, ]
+est_pf_1_n500[, (k + 1):(2 * k)] <- sigma[draws_index, ]
+est_pf_1_n500[, (2 * k + 1):(3 * k)] <- pi_[draws_index, ]  
+
+```
+
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+# Convert the matrix to a data frame
+df_MCMC_n500 <- as.data.frame(est_gibbs_1_n500)
+df_pf_n500 <- as.data.frame(est_pf_1_n500)
+
+# Plot density of the first column
+compare1 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V1, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V1, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V1, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V1, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[1], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[1], colour = "Data", linetype="n=1000"))+
+  scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(a) " * mu[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare2 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V2, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V2, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V2, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V2, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[2], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[2], colour = "Data", linetype="n=1000"))+
+  scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(b) " * mu[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare3 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V3, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V3, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V3, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V3, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[3], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[3], colour = "Data", linetype="n=1000"))+
+  scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(c) " * sigma[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare4 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V4, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V4, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V4, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V4, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[4], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[4], colour = "Data", linetype="n=1000"))+
+    scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(d) " * sigma[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare5 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V5, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V5, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V5, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V5, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[5], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[5], colour = "Data", linetype="n=1000"))+
+    scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(e) " * pi[1]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+compare6 <- ggplot() +  # assuming default column name is V1
+  geom_density(data=df_MCMC_n500, aes(x = V6, colour="MCMC", linetype = "n=1000")) +
+  geom_density(data=df_pf_n500, aes(x = V6, colour="PF", linetype="n=1000")) +
+  geom_density(data=df_MCMC_n200, aes(x = V6, colour="MCMC", linetype = "n=200")) +
+  geom_density(data=df_pf_n200, aes(x = V6, colour="PF", linetype="n=200")) +
+  geom_vline(aes(xintercept = real_parameter1[6], colour = "Data", linetype="n=200"))+
+  geom_vline(aes(xintercept = real_parameter[6], colour = "Data", linetype="n=1000"))+
+    scale_linetype_manual(name = "Data size", values = c("n=200" = "dashed", 
+                                                "n=1000"="solid")) +
+  scale_colour_manual(name = "Method", values = c("MCMC" = "red",
+                                                "Data"="blue", "PF"="green")) +
+  labs(
+    title = expression("(f) " * pi[2]),
+    x = "Value",
+    y = "Density"
+  ) +
+  theme(legend.position = "none")
+
+combined_compare <- (compare1 + compare2 + compare3) /
+                    (compare4 + compare5 + compare6) +
+                    plot_layout(guides = "collect") &
+                    theme(legend.position = "bottom")
+
+combined_compare
+```

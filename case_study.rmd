@@ -1,0 +1,541 @@
+---
+title: "case_study"
+output: html_document
+date: "2025-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load All Data
+
+```{r}
+source("dir_manager.r")
+
+all_swimming <- read.csv(file.path(dir_path, "swimming/swim2006_2024.csv"))
+```
+
+## Pick data
+```{r}
+library(dplyr)
+
+subset_data <- all_swimming %>%
+  filter(Category == "LC",
+         Gender == "Female",
+         EVENT == "400 m Freestyle",
+         Class == "S06",
+         YEAR == "2024")
+
+print(subset_data)
+```
+
+```{r}
+table(subset_data$Age)
+
+subset_data <- subset_data %>%
+  mutate(Speed = 400 / Time..s.)
+
+summary(subset_data$Speed)
+y <- subset_data$Speed
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(subset_data, aes(x = Speed)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 30,
+                 fill = "lightblue",
+                 color = "lightblue",
+                 alpha = 0.25) +
+  geom_density(color = "red", size = 1, alpha = 0.8, bw = 0.03) +
+  labs(
+    x = "Speed (m/s)",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+
+
+```
+
+
+
+## RJMCMC
+
+### Prior, Death
+
+
+```{r}
+# Vague prior
+xi <- 1
+kappa <- 0.001; phi = 1/ kappa
+a <- 0.1
+g <- 0.1
+h <- 1
+delta <- 1
+lambda <- 3
+
+
+max.K <- 10
+min.K <- 1
+
+c_val <- 0.5 # example value, change as needed
+
+# Initialise
+birth_pr <- numeric(max.K)
+death_pr <- numeric(max.K)
+
+for (k in min.K:max.K) {
+  if (k < max.K) {
+    birth_pr[k] <- c_val * min(1, lambda / (k + 1))
+  } else {
+    birth_pr[k] <- 0
+  }
+
+  if (k > min.K) {
+    death_pr[k] <- c_val * min(1, (k) / lambda)
+  } else {
+    death_pr[k] <- 0
+  }
+}
+
+cat("birth_pr: ", birth_pr, "\n")
+cat("death_pr: ", death_pr, "\n")
+```
+
+
+### Run
+
+```{r}
+source(file.path(dir_path,"rjmcmc_gumbel/rjmcmc_gumbel.r"))
+
+iter <- 100000
+burn.in <- iter/5 * 2
+
+
+set.seed(629)
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+split_count <- 0
+combine_count <- 0
+birth_count <- 0
+death_count <- 0
+
+MHsd_mu <- list(
+  c(0.2),
+  c(0.15, 0.15),
+  c(0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2),
+  c(0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2)
+)
+  
+
+
+MHsd_tau <- list(
+  c(1),
+  c(8, 8),
+  c(15, 15, 15),
+  c(8, 8, 8, 8),
+  c(1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1),
+  c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+k <- 3
+b <- rgamma(1, g, h)
+gamma_Euler <- 0.5772
+beta_hat <- sqrt(6 / 3.14^2 * var(y))
+mu_init <- mean(y) - beta_hat * gamma_Euler
+tau_init <- 1 / beta_hat
+left_boundary_TN <- 0.001
+
+
+mu <- rep(mu_init, k)
+tau <- rep(tau_init, k)
+pi <- rep(1/k, k)
+Z <- rep(1:k, length.out=length(y))
+
+tic("Start RJMCMC on Gumbel:")
+est_RJMCMC_raw <- rjmcmc_gumbel_random_b(iter, y, k,# iteration count, data
+                               max.K, min.K, birth_pr,death_pr,
+                               xi,kappa,a,g,h, delta,lambda,#  prior parameters
+                               mu, tau, pi, Z, b,# initial value
+                               MHsd_mu_list = MHsd_mu, MHsd_tau_list=MHsd_tau,left_boundary_TN,
+                               verbose = TRUE)
+cat("acceptance rate: ", est_RJMCMC_raw$acc_rate_mu_tau, "\n")
+toc()
+
+all_Z <- est_RJMCMC_raw$all_Z
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+
+### k plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+est_rjmcmc_all <- extract_data(est_RJMCMC_raw$parameter, burn.in + 1, iter)
+plot_k_trace_and_density(est_rjmcmc_all)
+
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+est_rjmcmc_3 <- remove_all_k_but(est_rjmcmc_all, 3)
+est_rjmcmc_4 <- remove_all_k_but(est_rjmcmc_all, 4)
+
+```
+
+
+### paramter plot
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+est_k <- 3
+est_rjmcmc_t <- remove_all_k_but(est_rjmcmc_all, est_k)
+
+pp <- plot_rjmcmc_sixpanel_case_specific(
+  mats   = list(mu = est_rjmcmc_t$mu, tau = est_rjmcmc_t$tau, pi = est_rjmcmc_t$pi),
+  k      = est_k,
+  truths = list(mu = NULL, tau = NULL, pi = NULL),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10,
+  mu_trace_ylim  = c(0.75, 1.3),
+  tau_trace_ylim = c(0, 40),
+  pi_trace_ylim  = c(0, 1),         # probs
+  mu_dens_xlim   = c(0.75, 1.3),
+  tau_dens_xlim  = c(0, 40),
+  pi_dens_xlim   = c(0, 1)
+)
+ggsave(
+  file.path(pic_path, "case_study", "rjmcmc_raw.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+
+lst_est_after <- filter_by_component_size(all_Z, est_rjmcmc_all, min_count = 3)
+est_k <- 3
+est_rjmcmc_t <- remove_all_k_but(lst_est_after, est_k)
+pp <- plot_rjmcmc_sixpanel_case_specific(
+  mats   = list(mu = est_rjmcmc_t$mu, tau = est_rjmcmc_t$tau, pi = est_rjmcmc_t$pi),
+  k      = est_k,
+  truths = list(mu = NULL, tau = NULL, pi = NULL),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10,
+  mu_trace_ylim  = c(0.5, 1.5),
+  tau_trace_ylim = c(0, 40),
+  pi_trace_ylim  = c(0, 1),         # probs
+  mu_dens_xlim   = c(0.5, 1.5),
+  tau_dens_xlim  = c(0, 40),
+  pi_dens_xlim   = c(0, 1)
+)
+ggsave(
+  file.path(pic_path, "case_study", "rjmcmc_post.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+### estimated density
+
+```{r}
+# ---------- 基础数据 ----------
+est <- est_rjmcmc_all
+k   <- as.integer(est$k)
+mu  <- as.matrix(est$mu)
+tau <- as.matrix(est$tau)   # tau = 1/b
+w   <- as.matrix(est$pi)
+T_eff <- length(k)
+Kmax  <- ncol(mu)
+
+# ---------- Gumbel(maxima) 密度（参数 tau = 1/b） ----------
+dGumbelMax_tau <- function(x, mu, tau) {
+  b <- 1 / tau
+  z <- (x - mu) / b
+  (1 / b) * exp(-(z + exp(-z)))
+}
+
+# ---------- 手动设置绘图范围 ----------
+x_grid <- seq(0.5, 1.5, length.out = 400)
+
+# ---------- 计算模型平均密度 ----------
+Fx <- matrix(0.0, nrow = length(x_grid), ncol = T_eff)
+
+for (t in seq_len(T_eff)) {
+  kt <- k[t]
+  dens_sum <- rep(0.0, length(x_grid))
+  for (j in seq_len(kt)) {
+    dens_sum <- dens_sum + w[t, j] * dGumbelMax_tau(x_grid, mu = mu[t, j], tau = tau[t, j])
+  }
+  Fx[, t] <- dens_sum
+}
+
+f_mean <- rowMeans(Fx)
+
+# ---------- 画图 ----------
+library(ggplot2)
+df_plot <- data.frame(x = x_grid, mean = f_mean)
+
+
+
+
+```
+
+
+```{r}
+ggplot(subset_data, aes(x = Speed)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 30,
+                 fill = "lightblue",
+                 color = "lightblue",
+                 alpha = 0.25) +
+  geom_line(data = df_plot, aes(x = x, y = mean),
+            colour = "black", linewidth = 1) +
+  coord_cartesian(xlim = c(0.5, 1.5)) +
+  labs(x = "Average speed", y = "Density",
+       title = "Estimated density vs observed speeds",
+       subtitle = "RJMCMC model-averaged, tau = 1/b") +
+  theme_minimal(base_size = 12)
+```
+
+
+
+## PF
+
+### Prior
+
+```{r}
+alpha <- 5
+
+xi <- 1
+phi <- 0.1
+a <- 3
+b <- 3
+```
+
+### Run
+
+```{r}
+source("dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_pf.r"))
+
+library(tictoc)
+
+set.seed(6291117)
+
+N <- 200
+
+S_ratio <- 0.1
+
+S <- 2000 * S_ratio
+S_U <- 1000 * S_ratio
+
+tic("Run my function")
+res <- pf_gumbel(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                        S = S, S_U = S_U,
+                      verbose = TRUE) 
+
+toc()
+
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+### Analysis
+
+```{r}
+source(file.path(dir_path,"particle_filter/fearnhead_utilities.r"))
+
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+```
+
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_helper.r"))
+set.seed(629)
+
+target_k <- 2
+
+k_index <- get_particle_indices_by_k(uni_particles, target_k)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_gumbel(k_particles,k_w, target_k, samples_to_get,
+                                                 y, xi, phi, a, b,
+                                                 MHsd_mu_l = c(0.4, 0.2, 0.3), 
+                                                 MHsd_tau_l = c(0.8, 4, 1),
+                                                 total_iter= 1500, burn_in = 500)
+
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+
+pp <- plot_threepanel_density(
+  est_fearnhead,
+  k = target_k,
+  truths = list(mu = NULL, tau = NULL, pi = NULL)
+)
+ggsave(
+  file.path(pic_path, "case_study", "pf.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+### estimated density
+
+```{r}
+library(ggplot2)
+
+# Gumbel 密度函数 (参数化为 tau = 1/scale)
+d_gumbel_tau <- function(x, mu, tau) {
+  eta <- tau * (x - mu)
+  tau * exp(-eta - exp(-eta))
+}
+
+# === 主程序 ===
+xgrid <- seq(0.5, 1.5, length.out = 400)
+dens_mix <- numeric(length(xgrid))
+
+for (i in seq_along(uni_particles)) {
+  zz <- uni_particles[[i]]
+  k_i <- length(unique(zz))
+
+  cat("Particle", i, "with k =", k_i, "\n")
+
+  # 对该粒子单独抽样
+  params_i <- get_posterior_parameters_gumbel(
+    particles = list(zz),     # 单个粒子
+    weights = 1,              # 权重=1
+    k = k_i,
+    samples_to_get = 200,      # 抽样数可根据精度调整
+    y = y,
+    eta = xi, phi = phi, a = a, b = b
+  )
+
+  # 对该粒子的每个参数样本计算密度
+  for (s in seq_len(nrow(params_i))) {
+    mu_vec  <- params_i[s, 1:k_i]
+    tau_vec <- pmax(params_i[s, (k_i+1):(2*k_i)], 1e-8)
+    pi_vec  <- pmax(params_i[s, (2*k_i+1):(3*k_i)], 0)
+    pi_vec  <- pi_vec / sum(pi_vec)
+
+    # 计算在xgrid上的混合密度
+    dens_comp <- sapply(seq_len(k_i), function(j) d_gumbel_tau(xgrid, mu_vec[j], tau_vec[j]))
+    dens_i_s <- dens_comp %*% pi_vec
+
+    # 累加带权密度
+    dens_mix <- dens_mix + uni_w[i] * dens_i_s / nrow(params_i)
+  }
+}
+
+# 归一化（可选，使积分约为1）
+dx <- diff(xgrid)[1]
+dens_mix <- dens_mix / sum(dens_mix * dx)
+
+
+
+```
+
+```{r}
+# 绘图
+df <- data.frame(x = xgrid, dens = as.numeric(dens_mix))
+ggplot(df, aes(x, dens)) +
+  geom_line(linewidth = 0.9) +
+  labs(
+    x = "y",
+    y = "Estimated density",
+    title = "Posterior mean density on [0.5, 1.5] (varying k)"
+  )
+```
+
+## All
+
+```{r}
+library(ggplot2)
+
+ggplot() +
+  geom_histogram(
+    data = subset_data,
+    aes(x = Speed, y = after_stat(density), fill = "Data"),
+    bins = 30,
+    color = "lightblue",
+    alpha = 0.25
+  ) +
+  geom_line(
+    data = df,
+    aes(x = x, y = dens, colour = "Particle Filter"),
+    linewidth = 1
+  ) +
+  geom_line(
+    data = df_plot,
+    aes(x = x, y = mean, colour = "RJMCMC"),
+    linewidth = 1
+  ) +
+  coord_cartesian(xlim = c(0.5, 1.5)) +
+  labs(
+    x = "Speed",
+    y = "Density",
+    colour = NULL,
+    fill = NULL
+  ) +
+  scale_fill_manual(values = c("Data" = "lightblue")) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+
+```
+
+

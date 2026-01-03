@@ -1,0 +1,573 @@
+---
+title: "trying"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# data
+
+```{r}
+library(evd)
+set.seed(123)
+NN <- 10
+tau_true <- 2
+Y <- rgumbel(NN, loc = 1, scale = 1/tau_true)
+
+
+eta <- 1
+phi <- 0.5
+a <- 1
+b <- 1
+```
+
+
+
+# prior
+
+```{r}
+
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+library(evd)
+
+
+set.seed(100)
+
+
+
+
+# ==== Monte Carlo S值列表 ====
+S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
+n_rep <- 1
+
+# ==== 保存结果 ====
+results <- data.frame(
+  S = S_values,
+  log_likelihood = NA,
+  relative_error = NA
+)
+
+# ==== 多次运行并取平均 ====
+for (i in seq_along(S_values)) {
+  S <- S_values[i]
+  
+  logs <- numeric(n_rep)
+  rels <- numeric(n_rep)
+  
+  for (j in 1:n_rep) {
+    res <- estimate_cluster_likelihood_gumbel_MC_prior(
+      y_i = Y,
+      eta = eta, phi = phi,
+      a = a, b = b,
+      S = S
+    )
+    logs[j] <- res$log_likelihood
+    rels[j] <- res$relative_error
+  }
+  
+  results$log_likelihood[i] <- mean(logs, na.rm = TRUE)
+  results$relative_error[i] <- mean(rels, na.rm = TRUE)
+}
+
+# ==== 作图 ====
+library(ggplot2)
+ggplot(results, aes(x = S, y = relative_error)) +
+  geom_line() +
+  geom_point() +
+  scale_x_log10() +
+  ylab("Relative Error") +
+  xlab("Sample Size S (log scale)") +
+  ggtitle("Relative Error vs Monte Carlo Sample Size") +
+  theme_minimal()
+
+
+```
+
+
+
+# normal-gamma outside compare
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+library(evd)
+library(ggplot2)
+
+# Step 1: Data and fixed priors
+set.seed(100)
+
+my_rate <- 1/2
+
+# Step 2: Estimate Normal proposal (mu_p, sigma_p)
+beta_hat <- sqrt(var(Y) * 6 / pi^2)
+mu_hat <- mean(Y) - beta_hat * 0.5772  # mean - beta * EulerConst
+mu_p <- mu_hat
+sigma_p <- 1/NN^(my_rate) # your choice; can adjust later
+
+# Step 3: Estimate Gamma proposal (a_p, b_p)
+estimate_gamma_proposal <- function(Y, NN, base_fraction = 0.5) {
+  tau_hat <- 1 / beta_hat
+  
+  # Standard deviation shrinks with sample size
+  tau_sd <- base_fraction * tau_hat / NN^(my_rate)
+  
+  # Gamma parameters
+  a_p <- (tau_hat / tau_sd)^2
+  b_p <- a_p / tau_hat
+  
+  return(list(a_p = a_p, b_p = b_p, tau_mean = tau_hat, tau_sd = tau_sd))
+}
+
+gamma_params <- estimate_gamma_proposal(Y, NN)
+
+
+```
+
+
+```{r}
+# ==== Monte Carlo S值列表 ====
+S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
+n_rep <- 1
+
+set.seed(132)
+
+# ==== 保存结果 ====
+results <- data.frame(
+  S = S_values,
+  log_likelihood = NA,
+  relative_error = NA
+)
+
+# ==== 多次运行并取平均 ====
+for (i in seq_along(S_values)) {
+  S <- S_values[i]
+  
+  logs <- numeric(n_rep)
+  rels <- numeric(n_rep)
+  
+  for (j in 1:n_rep) {
+    res <- estimate_cluster_likelihood_gumbel_MC_normal_gamma(
+      y_i = Y,
+      eta = eta, phi = phi,
+      a = a, b = b,
+      mu_p = mu_p, sigma_p = sigma_p,
+      a_p = gamma_params$a_p, b_p = gamma_params$b_p,
+      S = S
+    )
+    logs[j] <- res$log_likelihood
+    rels[j] <- res$relative_error
+  }
+  
+  results$log_likelihood[i] <- mean(logs, na.rm = TRUE)
+  results$relative_error[i] <- mean(rels, na.rm = TRUE)
+}
+
+# ==== 作图 ====
+library(ggplot2)
+ggplot(results, aes(x = S, y = relative_error)) +
+  geom_line() +
+  geom_point() +
+  scale_x_log10() +
+  ylab("Relative Error") +
+  xlab("Sample Size S (log scale)") +
+  ggtitle("Relative Error vs Monte Carlo Sample Size") +
+  theme_minimal()
+
+print(exp(results$log_likelihood))
+```
+
+
+
+# Bundle Prior
+
+```{r}
+library(evd)
+library(ggplot2)
+
+
+source("../../dir_manager.r")
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+
+
+NN_values <- c(2, 5, 10, 30, 100, 1000)
+tau_values <- c(2, 0.5, 1)
+S_values <- c(100, 200, 400, 500, 1000, 5000, 10000, 20000, 50000, 100000)
+n_rep <- 1  # 可设为 10 平滑曲线
+
+
+eta <- 1
+phi <- 0.5
+a <- 1
+b <- 1
+
+
+all_results <- list()
+
+set.seed(132)
+
+res <- run_mc_experiment_prior(NN_values, tau_values, S_values, n_rep, eta, phi, a, b)
+
+```
+```{r}
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+pp <- make_mc_plots(res$plot_data_list, NN_values)
+
+ggsave(
+  file.path(pic_path, "pf_fearnhead", "mc", "prior.png"),
+  pp,
+  width = 6,
+  height = 10
+)
+
+```
+
+
+
+
+# Bundle Normal-Gamma
+
+```{r}
+library(evd)
+library(ggplot2)
+
+
+source("../../dir_manager.r")
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+
+
+my_rate <- 1/4
+
+
+estimate_gamma_proposal <- function(Y, NN, base_fraction = 0.5) {
+  beta_hat <- sqrt(var(Y) * 6 / pi^2)
+  tau_hat <- 1 / beta_hat
+  tau_sd <- base_fraction * tau_hat / NN^(my_rate)
+  a_p <- (tau_hat / tau_sd)^2
+  b_p <- a_p / tau_hat
+  return(list(a_p = a_p, b_p = b_p, tau_mean = tau_hat, tau_sd = tau_sd))
+}
+
+
+NN_values <- c(2, 5, 10, 30, 100, 1000)
+tau_values <- c(2, 0.5, 1)
+S_values <- c(100,200,400, 500, 1000, 5000, 10000, 20000, 50000, 100000)
+n_rep <- 1  # 可改为10增强平滑性
+
+
+eta <- 1
+phi <- 0.5
+a <- 1
+b <- 1
+
+
+all_results <- list()
+
+
+set.seed(123)
+
+res <- run_mc_experiment_normal_gamma(NN_values, tau_values, S_values, n_rep, eta, phi, a, b, my_rate)
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+pp <- make_mc_plots(res$plot_data_list, NN_values)
+
+ggsave(
+  file.path(pic_path, "pf_fearnhead", "mc", "normal_gamma.png"),
+  pp,
+  width = 6,
+  height = 10
+)
+```
+
+
+# Bundle Uniform
+
+```{r}
+library(evd)
+library(ggplot2)
+
+# ==== 加载函数 ====
+source("../../dir_manager.r")
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r")) 
+
+my_rate <- 1/4
+
+# ==== 参数组合 ====
+NN_values <- c(2,5, 10, 30, 100, 1000)
+tau_values <- c(2, 0.5, 1)
+S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
+n_rep <- 1  
+
+eta <- 1
+phi <- 0.5
+a <- 1
+b <- 1
+
+all_results <- list()
+
+set.seed(132)
+
+res <- run_mc_experiment_uniform(NN_values, tau_values, S_values, n_rep, eta, phi, a, b)
+
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+pp <- make_mc_plots(res$plot_data_list, NN_values)
+
+ggsave(
+  file.path(pic_path, "pf_fearnhead", "mc", "uniform.png"),
+  pp,
+  width = 6,
+  height = 10
+)
+```
+
+
+
+
+
+# Multiple call 
+
+```{r}
+library(evd)
+library(ggplot2)
+
+
+source("../../dir_manager.r")
+source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
+
+n <- 10
+
+Y1 <- rgumbel(n, 1, 1)
+Z1 <- rep(1, n)
+
+Y2 <- rgumbel(n, 1, 0.5)
+Z2 <- rep(2, n)
+
+Y3 <- rgumbel(n, 1, 2)
+Z3 <- rep(3, n)
+
+Y <- c(Y1,Y2,Y3)
+Z <- c(Z1, Z2, Z3)
+
+
+eta <- 1
+phi <- 0.5
+a <- 1
+b <- 1
+
+
+res <- estimate_log_likelihood_given_Z(
+    Y, Z,
+    eta, phi, a, b,
+    S = 10000,
+    plot = FALSE
+) 
+
+print(res)
+
+
+```
+
+
+
+
+
+
+# uniform
+
+```{r}
+
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+# 示例数据
+set.seed(42)
+
+# 估计
+result <- estimate_likelihood_gumbel_MC_uniform_total(
+  Y = Y, Z = Z,
+  eta , phi ,
+  a, b,
+  S = 5000,
+  mu_min = -0, mu_max = 2,
+  tau_min = 0.01, tau_max = 2
+)
+
+print(result)
+```
+
+
+
+
+
+
+
+# hcubature
+
+
+```{r}
+library(cubature)
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+
+set.seed(123)
+
+
+result <- hcubature(
+  f = wrapped_integrand,
+  lowerLimit = c(-1, 0.001),
+  upperLimit = c(3, 3),
+  y_i = Y,
+  eta = eta, phi = phi,
+  a = a, b = b
+)
+
+print(result$integral)
+```
+
+
+# laplace
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+
+set.seed(123)
+
+laplace_result <- laplace_approximation(Y, eta, phi, a, b)
+```
+
+
+# heat plot
+
+
+```{r}
+library(ggplot2)
+
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+
+
+
+# Step 1: 设置自定义区间
+SSSS <- 500
+
+mu_range <- seq(0.75, 1.5, length.out = SSSS)
+tau_range <- seq(2.25, 3.75, length.out = SSSS)
+
+# Step 2: 构建参数网格
+grid <- expand.grid(mu = mu_range, tau = tau_range)
+
+# Step 3: 计算 log f(mu, tau)
+grid$logf <- apply(grid, 1, function(row) {
+  val <- my_integrand(
+    mu = as.numeric(row["mu"]),
+    tau = as.numeric(row["tau"]),
+    y_i = Y,
+    eta = eta, phi = phi,
+    a = a, b = b
+  )
+  if (!is.finite(val)) return(NA)
+  val  # Already log(f), no need to log again
+})
+
+# Step 4: 去除无效点
+grid <- grid[is.finite(grid$logf), ]
+
+# Step 5: 绘制等高热力图
+library(ggplot2)
+ggplot(grid, aes(x = mu, y = tau, z = logf)) +
+  geom_contour_filled(bins = 30) +
+  scale_fill_viridis_d(option = "D") +
+  labs(
+    title = expression("Log Integrand of " * f(mu, tau)),
+    x = expression(mu),
+    y = expression(tau),
+    fill = "log(f)"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+# Uni port
+
+## Data
+
+
+```{r}
+alpha <- 0.5
+eta <- 5
+phi <- 10
+a <- 2
+b <- 1
+
+Y <- c(10.4, 10.3, -0.4)
+```
+
+
+## First 
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
+Z <- c(1,1,1)
+
+res <- estimate_log_likelihood_given_Z_by_MC(
+    Y, Z,
+    eta, phi, a, b,
+    S = 10000,
+    plot = FALSE
+) 
+
+print(res)
+```
+```{r}
+Z <- c(1,1,2)
+
+res <- estimate_log_likelihood_given_Z_by_MC(
+    Y, Z,
+    eta, phi, a, b,
+    S = 10000,
+    plot = FALSE
+) 
+
+print(res)
+```
+
+
+```{r}
+Z <- c(1,1,1,2)
+
+res <- estimate_log_likelihood_given_Z_by_MC(
+    Y, Z,
+    eta, phi, a, b,
+    S = 10000,
+    plot = FALSE
+) 
+
+print(res)
+```
+
+
+```{r}
+Z <- c(1,2,1,2)
+
+res <- estimate_log_likelihood_given_Z_by_MC(
+    Y, Z,
+    eta, phi, a, b,
+    S = 10000,
+    plot = FALSE
+) 
+
+print(res)
+```
+

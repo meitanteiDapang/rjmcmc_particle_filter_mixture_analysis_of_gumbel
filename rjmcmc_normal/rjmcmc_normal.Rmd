@@ -1,0 +1,1062 @@
+---
+title: "rjmcmc_normal"
+output: html_document
+---
+
+## data
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+
+set.seed(6291117)
+n <-  200
+# Generate Data
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+
+k <- 3
+sim_pi <- c(pi.1, pi.2, pi.3)
+
+sim_mu <- c( -5,    0,    5)
+sim_tau <- c(2, 5, 1)
+sim_sigma <- 1/sqrt(sim_tau)
+
+y <- c()
+for(i in c(1:k)){
+  y.k <- rnorm(n*sim_pi[i], mean = sim_mu[i], sd = sim_sigma[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated tau k= ",i," :", 1/sd(y.k)^2, "\n")
+  y <- c(y, y.k)
+}
+
+X <- sample(y)
+
+# prior
+xi <- 0
+kappa <- 0.001
+a <- 0.1
+g <- 0.1
+h <- 1
+delta <- 1
+lambda <- 3
+```
+
+
+### Birth Death Rate
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_common/birth_death_prob.r"))
+
+max.K <- 10
+min.K <- 1
+c_val <- 0.5
+
+res <- get_birth_death_pr(max.K, min.K, lambda, c_val)
+birth_pr <- res$birth_pr
+death_pr <- res$death_pr
+```
+
+
+### Run
+
+```{r}
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+set.seed(6291117)
+iter <- 100000
+burn.in <- iter/5
+
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+split_count <- 0
+combine_count <- 0
+birth_count <- 0
+death_count <- 0
+
+# initial value
+k <- 5
+b <- rgamma(1, g, h)
+mu <- sort(rnorm(k, xi, kappa))
+tau <- rep(1, k)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(X))
+tic("Running RJMCMC normal:")
+est <- rjmcmc_mixture_normal_random_b(
+  iter, X, max.K,# iteration count, data
+  xi, kappa, a, g, h, lambda, delta,#  prior parameters
+  k, mu, tau, pi, Z, b, # initial value
+  birth_pr, death_pr     )
+toc()
+
+est1 <- est[[1]]
+lst_est1 <- extract_data(est1, burn.in + 1, iter)
+
+all_Z <- est[[2]]
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+plot_k_trace_and_density(lst_est1)
+
+est_k <- 3
+
+lst_only3 <- remove_all_k_but(lst_est1, est_k)
+
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+# plot_rjmcmc_trace_and_density(lst_only3$mu,  "mu", est_k, sim_mu)
+# plot_rjmcmc_trace_and_density(lst_only3$tau,  "tau", est_k, sim_tau)
+# plot_rjmcmc_trace_and_density(lst_only3$pi,  "pi", est_k, sim_pi)
+pp <- plot_rjmcmc_sixpanel(
+  mats   = list(mu = lst_only3$mu, tau = lst_only3$tau, pi = lst_only3$pi),
+  k      = est_k,
+  truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+ggsave(
+  file.path(pic_path, "rjmcmc_normal", "rjmcmc", "raw_3", "raw_3.png"),
+  pp,
+  width = 8,
+  height = 10
+)
+
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+
+lst_est_after <- filter_by_component_size(all_Z, lst_est1, min_count = 2)
+
+lst_only3_after <- remove_all_k_but(lst_est_after, est_k)
+
+plot_rjmcmc_sixpanel(
+  mats   = list(mu = lst_only3$mu, tau = lst_only3$tau, pi = lst_only3$pi),
+  k      = est_k,
+  truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
+  trace_alpha = 0.25,
+  legend_position = "bottom",
+  panel_label_size = 10
+)
+```
+
+
+### mixAK
+
+```{r}
+library(mixAK)
+parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
+
+set.seed(20250813)
+
+# ── Load the data ───────────────────────────────────────────────────────────────
+data("Galaxy", package = "mixAK")
+
+# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
+GalaxyPrior <- list(
+  priorK   = "tpoisson",
+  Kmax     = 10,
+  delta    = delta,
+  priormuQ = "independentC",
+  xi       = xi,
+  D        = 1/(kappa*10000),
+  zeta     = 2 * a,
+  g        = g,
+  h        = h,
+  lambda   = lambda
+)
+
+parRJMCMC <- list(
+  par.u1 = c(2, 2),
+  par.u2 = c(2, 2),
+  par.u3 = c(1, 1)
+)
+
+# ── Run MCMC ────────────────────────────────────────────────────────────────────
+GalaxyModel <- NMixMCMC(
+  y0     = X,
+  prior  = GalaxyPrior,
+  RJMCMC = parRJMCMC,
+  nMCMC  = c(burn = 50000, keep = 50000, thin = 1, info = 10000),
+  scale  = list(shift = 0, scale = 1),
+  PED    = FALSE
+)
+
+# ── Basic posterior summary & predictive density ────────────────────────────────
+print(GalaxyModel)
+
+```
+
+
+```{r}
+K <- GalaxyModel$K           # K 的马尔可夫链
+n_change <- sum(diff(K) != 0)
+n_up     <- sum(diff(K) == +1)  # 近似认为是 birth 或 split
+n_down   <- sum(diff(K) == -1) 
+```
+
+
+
+```{r}
+## ── Relabel（如果 KMeans 出错就退回原链） ─────────────────────────────
+fit_lab <- tryCatch(
+  NMixRelabel(GalaxyModel, type = "KMeans"),
+  error = function(e) GalaxyModel
+)
+
+## 提取后验样本矩阵（迭代 × Kmax）
+post_mu  <- as.matrix(fit_lab$mu)   # 组件均值
+post_tau <- as.matrix(fit_lab$Q)    # 精度（precision）
+post_w   <- as.matrix(fit_lab$w)    # 权重（每行加和≈1）
+
+## 计算每次迭代的“非空分量数” K_+（用一个很小的阈值）
+w_eps   <- 1e-8
+K_plus  <- rowSums(post_w > w_eps)
+
+## 标记几乎始终为空的分量（平均权重极小）
+w_bar   <- colMeans(post_w)
+almost_empty <- w_bar < 1e-3   # 你可把 1e-3 改成 1e-4 等更严格阈值
+
+## 小工具：把图例名字加上 * 标星以提示“几乎空”
+mk_leg <- function(prefix, K, flag_empty) {
+  base <- paste0(prefix, 1:K)
+  base[flag_empty[seq_len(K)]] <- paste0(base[flag_empty[seq_len(K)]], " *")
+  base
+}
+
+## 通用绘图函数（trace + density）
+plot_trace_density <- function(M, ylab_expr, title_prefix, flag_empty = NULL) {
+  stopifnot(is.matrix(M))
+  K <- ncol(M)
+  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
+            "#17becf", "#bcbd22", "#7f7f7f", "#e377c2", "#ff7f0e")[seq_len(K)]
+  par(mfrow = c(1, 2), mar = c(4,4,2,1))
+
+  # 左：trace 同图叠加
+  matplot(M, type = "l", lty = 1, col = cols,
+          xlab = "Iteration", ylab = ylab_expr,
+          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
+  leg_txt <- mk_leg(title_prefix, K, if (is.null(flag_empty)) rep(FALSE, K) else flag_empty)
+  legend("topright", legend = leg_txt, col = cols, lty = 1, bty = "n", cex = 0.9)
+
+  # 右：density 同图叠加
+  dens <- lapply(1:K, function(j) density(M[, j]))
+  xlim <- range(unlist(lapply(dens, `[[`, "x")))
+  ylim <- range(unlist(lapply(dens, `[[`, "y")))
+  plot(dens[[1]], xlim = xlim, ylim = ylim,
+       main = paste0("Posterior density of ", title_prefix),
+       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
+  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
+  legend("topright", legend = leg_txt, col = cols, lwd = 2, bty = "n", cex = 0.9)
+}
+
+## 画 μ
+plot_trace_density(post_mu, expression(mu[j]), "mu", almost_empty)
+
+## 画 τ（precision）
+plot_trace_density(post_tau, expression(tau[j]), "tau", almost_empty)
+
+## 画 w（权重；密度在 [0,1]）
+plot_trace_density(post_w, expression(w[j]), "w", almost_empty)
+
+## 额外：画 K_+ 的 trace 与直方图，观察“birth 后空分量”的动态
+par(mfrow = c(1,2), mar = c(4,4,2,1))
+plot(K_plus, type = "l", xlab = "Iteration", ylab = expression(K["+"]),
+     main = expression("Trace of " ~ K["+"]))
+hist(K_plus, breaks = seq(min(K_plus)-0.5, max(K_plus)+0.5, by=1),
+     xlab = expression(K["+"]), main = expression("Histogram of " ~ K["+"]))
+mtext("(*) legend 中标星的组件：平均权重极小，几乎始终为空", side = 3, line = -1.5, adj = 0, cex = 0.8)
+
+
+```
+
+
+
+
+## second data
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+
+set.seed(6291117)
+n <-  100
+# Generate Data
+set.seed(123)
+pi.1 <- 1/2
+pi.2 <- 1/6
+pi.3 <- 1/3
+
+sim_pi <- c(pi.1, pi.2, pi.3)
+
+sim_mu <- c( 0,    5,    10)
+sim_tau <- c(1/0.5^2, 1/0.5^2, 1/2.5^2)
+
+X.1 <- rnorm(pi.1 * n, sim_mu[1], 1/sqrt(sim_tau[1]) )
+X.2 <- rnorm(pi.2 * n, sim_mu[2], 1/sqrt(sim_tau[2]) )
+X.3 <- rnorm(pi.3 * n, sim_mu[3], 1/sqrt(sim_tau[3]) )
+
+X <- c(X.1,X.2,X.3)
+index <- sample(length(X))
+X <- X[index]
+
+# prior
+xi <- 0
+phi <- 5^2
+kappa <- 1/phi
+a <- 1
+b <- 1
+delta <- 1
+lambda <- 3
+```
+
+
+### Birth Death Rate
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_common/birth_death_prob.r"))
+
+max.K <- 10
+min.K <- 1
+c_val <- 0.5
+
+res <- get_birth_death_pr(max.K, min.K, lambda, c_val)
+birth_pr <- res$birth_pr
+death_pr <- res$death_pr
+```
+
+
+### Run
+
+```{r}
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+set.seed(6291117)
+iter <- 1000
+burn.in <- iter/5
+
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+# initial value
+k <- 5
+mu <- sort(rnorm(k, xi, kappa))
+tau <- rep(1, k)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(X))
+
+est <- rjmcmc_mixture_normal(
+  iter, X, max.K,# iteration count, data
+  xi, kappa, a, b, lambda, delta,#  prior parameters
+  k, mu, tau, pi, Z, # initial value
+  birth_pr, death_pr     )
+est1 <- est[[1]]
+lst_est1 <- extract_data(est1, burn.in + 1, iter)
+
+all_Z <- est[[2]]
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+plot_k_trace_and_density(lst_est1)
+
+est_k <- 3
+
+lst_only3 <- remove_all_k_but(lst_est1, est_k)
+
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+plot_rjmcmc_trace_and_density(lst_only3$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3$pi,  "pi", est_k, sim_pi)
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+
+lst_est_after <- filter_by_component_size(all_Z, lst_est1, min_count = 5)
+
+lst_only3_after <- remove_all_k_but(lst_est_after, est_k)
+
+plot_rjmcmc_trace_and_density(lst_only3_after$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3_after$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
+```
+
+
+## Galaxy
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+
+library(mixAK)
+data("Galaxy", package = "mixAK")
+
+y <- Galaxy
+
+# prior
+R=25.11
+g = 0.2
+h = 0.016
+
+# prior
+xi <- 21.73
+kappa <- 1/(R/5)^2
+a <- 2
+b <- 0.4/0.016
+delta <- 1
+lambda <- 3
+```
+
+
+### RG mixAK
+
+```{r}
+
+
+
+parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
+
+set.seed(20250813)
+
+# ── Load the data ───────────────────────────────────────────────────────────────
+data("Galaxy", package = "mixAK")
+
+# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
+GalaxyPrior <- list(
+  priorK   = "uniform",
+  Kmax     = 30,
+  delta    = 1,
+  priormuQ = "independentC",
+  xi       = 21.73,
+  D        = 1/kappa,
+  zeta     = 2 * a,
+  g        = 0.2,
+  h        = 0.016
+)
+
+parRJMCMC <- list(
+  par.u1 = c(2, 2),
+  par.u2 = c(2, 2),
+  par.u3 = c(1, 1)
+)
+
+# ── Run MCMC ────────────────────────────────────────────────────────────────────
+GalaxyModel <- NMixMCMC(
+  y0     = Galaxy,
+  prior  = GalaxyPrior,
+  RJMCMC = parRJMCMC,
+  nMCMC  = c(burn = 100000, keep = 100000, thin = 10, info = 10000),
+  scale  = list(shift = 0, scale = 1),
+  PED    = FALSE
+)
+
+# ── Basic posterior summary & predictive density ────────────────────────────────
+print(GalaxyModel)
+
+```
+
+
+### AKPaper mixak
+
+```{r}
+library(mixAK)
+set.seed(20250813)
+
+# ── Load the data ───────────────────────────────────────────────────────────────
+data("Galaxy", package = "mixAK")
+
+# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
+GalaxyPrior <- list(
+  priorK   = "uniform",
+  Kmax     = 30,
+  delta    = 1,
+  priormuQ = "independentC",
+  xi       = 21.73,
+  D        = 630.5121,
+  zeta     = 2 * 2,
+  g        = 0.2,
+  h        = 0.016 / 2
+)
+
+parRJMCMC <- list(
+  par.u1 = c(2, 2),
+  par.u2 = c(2, 2),
+  par.u3 = c(1, 1)
+)
+
+# ── Run MCMC ────────────────────────────────────────────────────────────────────
+GalaxyModel <- NMixMCMC(
+  y0     = Galaxy,
+  prior  = GalaxyPrior,
+  RJMCMC = parRJMCMC,
+  nMCMC  = c(burn = 100000, keep = 500000, thin = 10, info = 10000),
+  scale  = list(shift = 0, scale = 1),
+  PED    = FALSE
+)
+
+# ── Basic posterior summary & predictive density ────────────────────────────────
+print(GalaxyModel)
+
+```
+
+
+### poisson mixAK
+
+```{r}
+
+library(mixAK)
+data("Galaxy", package = "mixAK")
+
+y <- Galaxy
+# prior
+R = 25.11
+g = 0.2
+h = 0.016
+
+# prior
+xi <- 21.73
+kappa <- 0.0016
+a <- 2
+delta <- 1
+lambda <- 3
+```
+
+
+```{r}
+
+library(mixAK)
+
+parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
+
+set.seed(0813)
+
+# ── Load the data ───────────────────────────────────────────────────────────────
+data("Galaxy", package = "mixAK")
+
+# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
+GalaxyPrior <- list(
+  priorK   = "tpoisson",
+  Kmax     = 10,
+  delta    = 1,
+  priormuQ = "independentC",
+  xi       = 21.73,
+  D        = 1/kappa,
+  zeta     = 2 * a,
+  g        = 0.2,
+  h        = 0.016,
+  lambda   = 3
+)
+
+parRJMCMC <- list(
+  par.u1 = c(2, 2),
+  par.u2 = c(2, 2),
+  par.u3 = c(1, 1)
+)
+
+# ── Run MCMC ────────────────────────────────────────────────────────────────────
+GalaxyModel <- NMixMCMC(
+  y0     = Galaxy,
+  prior  = GalaxyPrior,
+  RJMCMC = parRJMCMC,
+  nMCMC  = c(burn = 25000, keep = 25000, thin = 1, info = 10000),
+  scale  = list(shift = 0, scale = 1),
+  PED    = FALSE
+)
+
+# ── Basic posterior summary & predictive density ────────────────────────────────
+print(GalaxyModel)
+
+```
+
+
+```{r}
+
+fit_lab <- tryCatch(NMixRelabel(fit_ak, type = "KMeans"), error=function(e) fit_ak)
+post_mu  <- as.matrix(fit_lab$mu)
+post_tau <- as.matrix(fit_lab$Q)   # precision
+post_w   <- as.matrix(fit_lab$w)
+colMeans(post_mu); colMeans(post_tau); colMeans(post_w)
+
+
+plot_trace_density <- function(M, ylab_expr, title_prefix) {
+  stopifnot(is.matrix(M))
+  K <- ncol(M)
+  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b")[seq_len(K)]
+  par(mfrow = c(1, 2), mar = c(4,4,2,1))
+
+  # 左：trace 同图叠加
+  matplot(M, type = "l", lty = 1, col = cols,
+          xlab = "Iteration", ylab = ylab_expr,
+          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
+  leg <- as.expression(lapply(1:K, function(j) bquote(.(as.name(title_prefix))[.(j)])))
+  legend("topright", legend = leg, col = cols, lty = 1, bty = "n")
+
+  # 右：density 同图叠加
+  dens <- lapply(1:K, function(j) density(M[,j]))
+  xlim <- range(unlist(lapply(dens, `[[`, "x")))
+  ylim <- range(unlist(lapply(dens, `[[`, "y")))
+  plot(dens[[1]], xlim = xlim, ylim = ylim,
+       main = paste0("Posterior density of ", title_prefix),
+       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
+  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
+  legend("topright", legend = leg, col = cols, lwd = 2, bty = "n")
+}
+
+## 画 μ
+plot_trace_density(post_mu, expression(mu[j]), "mu")
+
+## 画 τ（precision）
+plot_trace_density(post_tau, expression(tau[j]), "tau")
+
+## 画 w（权重；density 会在 [0,1]）
+plot_trace_density(post_w, expression(w[j]), "w")
+
+```
+
+
+
+
+###  RJMCMC
+
+#### Birth Death Rate
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_common/birth_death_prob.r"))
+
+max.K <- 30
+min.K <- 1
+c_val <- 0.5
+
+res <- get_birth_death_pr(max.K, min.K, lambda, c_val)
+birth_pr <- res$birth_pr
+death_pr <- res$death_pr
+```
+
+
+#### Run
+
+```{r}
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+set.seed(6291117)
+iter <- 500000
+burn.in <- iter/5
+
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+# initial value
+k <- 5
+mu <- sort(rnorm(k, xi, kappa))
+tau <- rep(1, k)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+
+est <- rjmcmc_mixture_normal(
+  iter, y, max.K,# iteration count, data
+  xi, kappa, a, b, lambda, delta,#  prior parameters
+  k, mu, tau, pi, Z, # initial value
+  birth_pr, death_pr     )
+est1 <- est[[1]]
+lst_est1 <- extract_data(est1, burn.in + 1, iter)
+
+all_Z <- est[[2]]
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+plot_k_trace_and_density(lst_est1)
+
+est_k <- 4
+
+lst_only3 <- remove_all_k_but(lst_est1, est_k)
+
+```
+
+```{r}
+
+sim_pi <- c(pi.1, pi.2, pi.3)
+
+sim_mu <- c( -10,    0,    8)
+sim_tau <- c(15, 10, 30)
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+plot_rjmcmc_trace_and_density(lst_only3$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3$pi,  "pi", est_k, sim_pi)
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+
+lst_est_after <- filter_by_component_size(all_Z, lst_est1, min_count = 5)
+
+lst_only3_after <- remove_all_k_but(lst_est_after, est_k)
+
+plot_rjmcmc_trace_and_density(lst_only3_after$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3_after$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
+```
+
+
+
+
+### RJMCMC - gh, compared with poisson AK
+
+#### Birth Death Rate
+
+
+```{r}
+
+library(mixAK)
+data("Galaxy", package = "mixAK")
+
+y <- Galaxy
+# prior
+R = 25.11
+g = 0.2
+h = 0.016
+
+# prior
+xi <- 21.73
+kappa <- 0.0016
+a <- 2
+delta <- 1
+lambda <- 3
+```
+
+
+```{r}
+source("../dir_manager.r")
+source(file.path(dir_path,"rjmcmc_common/birth_death_prob.r"))
+
+max.K <- 10
+min.K <- 1
+c_val <- 0.5
+
+res <- get_birth_death_pr(max.K, min.K, lambda, c_val)
+birth_pr <- res$birth_pr
+death_pr <- res$death_pr
+```
+
+
+#### Run
+
+```{r}
+source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
+set.seed(629)
+iter <- 50000
+burn.in <- iter/5
+
+split_accept_count <- 0
+combine_accept_count <- 0
+birth_accept_count <- 0
+death_accept_count <- 0
+
+# initial value
+k <- 5
+mu <- sort(rnorm(k, xi, kappa))
+tau <- rep(1, k)
+pi <- rdirichlet(1, rep(delta, k))
+Z <- rep(1:k, length.out=length(y))
+b <- rgamma(1, g, h)
+
+est <- rjmcmc_mixture_normal_random_b(
+  iter, y, max.K,# iteration count, data
+  xi, kappa, a, g, h, lambda, delta,#  prior parameters
+  k, mu, tau, pi, Z, b, # initial value
+  birth_pr, death_pr     )
+est1 <- est[[1]]
+lst_est1 <- extract_data(est1, burn.in + 1, iter)
+
+all_Z <- est[[2]]
+all_Z <- all_Z[(burn.in + 1): iter,]
+```
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/utilities.r"))
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+
+plot_k_trace_and_density(lst_est1)
+
+est_k <- 4
+
+lst_only3 <- remove_all_k_but(lst_est1, est_k)
+
+```
+
+```{r}
+
+sim_pi <- c(pi.1, pi.2, pi.3)
+
+sim_mu <- c( -10,    0,    8)
+sim_tau <- c(15, 10, 30)
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
+
+plot_rjmcmc_trace_and_density(lst_only3$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3$pi,  "pi", est_k, sim_pi)
+```
+
+
+```{r}
+source(file.path(dir_path,"rjmcmc_common/post_process.r"))
+
+lst_est_after <- filter_by_component_size(all_Z, lst_est1, min_count = 5)
+
+lst_only3_after <- remove_all_k_but(lst_est_after, est_k)
+
+plot_rjmcmc_trace_and_density(lst_only3_after$mu,  "mu", est_k, sim_mu)
+plot_rjmcmc_trace_and_density(lst_only3_after$tau,  "tau", est_k, sim_tau)
+plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
+```
+
+
+### RG PF
+
+```{r}
+library(mixAK)
+data("Galaxy", package = "mixAK")
+
+y <- Galaxy
+# prior
+R=25.11
+g = 0.2
+h = 0.016
+
+# prior
+xi <- 21.73
+kappa <- 0.0016
+a <- 2
+delta <- 1
+lambda <- 3
+
+b <- 1
+
+phi <- 1/kappa
+set.seed(629)
+y <- sample(y)
+```
+
+
+
+```{r}
+source(file.path(dir_path,"particle_filter/normal_fearnhead/pf_normal.r"))
+set.seed(6291117)
+
+# prior 
+alpha = 1
+phi = 1/kappa
+
+
+N <- 3000
+
+
+tic("Run Fearnhead PF:")
+res <- pf_normal(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+toc()
+particles <- res[[1]]
+weights <- res[[2]]
+
+
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/normal_fearnhead/normal_helper.r"))
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+```
+
+
+
+```{r}
+all_values <- sort(unique(unlist(uni_particles)))
+
+# 初始化一个命名向量存加权结果
+weighted_counts <- setNames(numeric(length(all_values)), all_values)
+
+print(weighted_counts)
+
+# 循环计算加权出现次数
+for (i in seq_along(uni_particles)) {
+  tab <- length(table(uni_particles[[i]]))
+  weighted_counts[tab] <- weighted_counts[tab] + uni_w[i]
+}
+
+# 打印结果
+print(weighted_counts)
+
+```
+
+
+
+### fearnhead PF
+
+```{r}
+library(mixAK)
+data("Galaxy", package = "mixAK")
+
+y <- Galaxy
+# prior
+R=25.11
+g = 0.2
+h = 0.016
+
+
+alpha <- 3
+# prior
+xi <- 20
+kappa <- 1/15^2
+a <- 1
+b <- 0.3
+
+phi <- 1/kappa
+set.seed(629)
+y <- sample(y)
+```
+
+
+
+```{r}
+source(file.path(dir_path,"particle_filter/normal_fearnhead/pf_normal.r"))
+set.seed(6291117)
+
+# prior 
+alpha = 1
+phi = 1/kappa
+
+
+N <- 300
+
+
+tic("Run Fearnhead PF:")
+res <- pf_normal(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+toc()
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/normal_fearnhead/normal_helper.r"))
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+```
+```{r}
+all_values <- sort(unique(unlist(uni_particles)))
+
+# 初始化一个命名向量存加权结果
+weighted_counts <- setNames(numeric(length(all_values)), all_values)
+
+print(weighted_counts)
+
+# 循环计算加权出现次数
+for (i in seq_along(uni_particles)) {
+  tab <- length(table(uni_particles[[i]]))
+  weighted_counts[tab] <- weighted_counts[tab] + uni_w[i]
+}
+
+# 打印结果
+print(weighted_counts)
+```
+
+
+
+## Mail
+
+Kia ora Elena, Philipp,
+
+This is an update about the topics we discussed last Tuesday.
+
+Regarding the prior distribution of k and weight in DPMM (or MDP) when the number of observations n is given, it turns out they are not Poisson and Dirichlet. Please see the attachment, where I write down the formulations of FMM and DPMM briefly; based on them, derivations for the distribution of k and weight are presented. So in this case, RJMCMC and Particle Filter are used on different models.
+
+Another important thing is that Richardson & Green (1997) discussed two hierarchical formulations. The first one is called "fixed beta", which I was using. Notation: y_i~N(mu_i, tau_i), and tau_i~Gamma(alpha, beta). Another one is "random beta", where they add an additional hierarchical level on beta, that beta~Gamma(g, h). We discussed at the very beginning that we would have a try for "fixed beta" firstly since I didn't understand why they introduce "random beta". Now, I get the point. They demonstrated that using "fixed beta" cannot achieve "real weak beta prior" for number of clusters k, but "random beta" can (see Fig 6 in R&G 1997). So they recommended the "random beta".
+
+The package mixAK is using "random beta", also I change my code to "random beta" (didn't change too much of previous code). Then I do some comparison.
+
+R&G shows the posterior of k for Galaxy data (Table 1) using uniform prior for k, and the distribution being (I ignore those being too small):
+    4      5      6      7       8
+    0.128  0.182  0.199  0.160   0.109
+
+Then I use the exact same setting and prior in mixAK, and get:
+    4        5        6        7        8
+    0.114628 0.215102 0.246970 0.185422 0.108132
+
+
+
+
+My code only supports poisson prior so far, I did another comparison between mixAK and my code using poisson prior, other prior and settings are same with the above:
+mixAk:
+    4       5       6       7       8        
+    0.17777 0.30451 0.26318 0.13620 0.05062
+
+mine:
+    4          5          6          7          8
+    0.14721250 0.22689375 0.22128750 0.16322500 0.09778750
+    
+All iterations are 200,000.
+
+
+And also, I also tried it on my Fearnhead code, but I can't use same prior because I don't consider the additional level beta~Gamma(g,h), so I just set beta = 1. 
+Fearnhead:
+  3            4            5            6            7
+  1.878340e-01 1.283628e-01 1.327368e-01 4.396580e-01 1.077744e-01
+
+I am using particle number N=3000, which is quite large; but still some valuable particles have been discard during resampling with only part of observations. I think it is the reason why we observe bimodal posterior of k.
+
+
+I'd like to know how these difference look to you from your experiences; but at least they are way more close compared with the one when I am using "fixed beta" version code. Also I am writing the part in thesis for FMM and normal RJMCMC; as planed, I will check the code with the mathematical terms carefully this week.
+
+
+
+

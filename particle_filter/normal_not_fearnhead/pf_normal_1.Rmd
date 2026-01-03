@@ -1,0 +1,184 @@
+---
+title: "pf_normal_one"
+author: "Zhonghao Yang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data
+
+
+
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/normal_not_fearnhead/pf_normal_1.r"))
+set.seed(629)
+
+mu_true <- 2
+sigma_true <- 10
+
+n <- 1000
+
+y <- rnorm(n, mean = mu_true, sd = sigma_true)
+
+cat("simulated mu: ", mean(y), "\n")
+cat("simulated sigma: ", sd(y), "\n")
+
+set.seed(1)
+
+y <- sample(y)
+
+
+```
+
+## Run
+
+```{r}
+source(file.path(dir_path,"particle_filter/normal_not_fearnhead/pf_normal_1.r"))
+set.seed(624177)
+
+# particles number
+N <- 50000
+
+# parameters for initial particles
+mu_0 <- 0
+sigma_0 <- 10
+a <- 0.01
+b <- 30
+
+# propagating parameters
+sd_mu <- 0.05
+sd_sigma <- 0.05
+tic("Start parameter-based k=1 pf:")
+res <- pf_normal_1(y, N,
+                   mu_0, sigma_0, a, b,
+                   sd_mu, sd_sigma, verbose = FALSE)
+toc()
+mu <- res$mu
+sigma <- res$sigma
+w <- res$w
+```
+
+```{r}
+
+estimate_mean <- get_estimate_mean(mu, sigma, w)
+cat("estimate_mean: ", estimate_mean, "\n")
+```
+
+## Density Plot
+
+```{r}
+source(file.path(dir_path,"particle_filter/normal_not_fearnhead/pf_normal_1.r"))
+
+pp <- plot_resample_mu_sigma(mu, sigma, w, mu_true, sigma_true, M = 10000, adjust=3)
+ggsave(
+  file.path(pic_path, "pf_fmm", "k1.png"),
+  pp,
+  width = 6,
+  height = 8
+)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+
+df <- data.frame(mu = mu, sigma = sigma, w = w) 
+
+
+threshold <- quantile(df$w, 0.9)
+
+
+df_filtered <- df %>% filter(w >= threshold)
+
+ggplot(df_filtered, aes(x = mu, y = sigma)) +
+  geom_point(aes(size = w)) +
+  scale_size_continuous(range = c(0.1, 3)) +  
+  annotate("point", x = mu_true, y = sigma_true, color = "red", shape = 4, size = 10, stroke = 2) +  
+  theme_minimal() +
+  labs(title = "(b)",
+       x = expression(mu),
+       y = expression(sigma),
+       size = "Weight (w)")
+
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+source("pf_normal_1.R")
+set.seed(6291117)
+
+mu_true <- 2
+sigma_true <- 1
+n <- 300
+
+y <- rnorm(n, mean = mu_true, sd = sigma_true)
+
+N <- 50000
+mu_0 <- 0
+sigma_0 <- 10
+a <- 1
+b <- 3
+sd_mu <- 0.05
+sd_sigma <- 0.05
+
+plots <- list()
+
+for (seed_d in 1:4) {
+  set.seed(seed_d)
+  y <- sample(y)
+
+  set.seed(624177)
+  res <- pf_normal_1(y, N, mu_0, sigma_0, a, b, sd_mu, sd_sigma, verbose = FALSE)
+  
+  mu <- res$mu
+  sigma <- res$sigma
+  w <- res$w
+  estimate_mean <- get_estimate_mean(mu, sigma, w)
+  cat("estimate_mean: ", estimate_mean, "\n")
+  
+  
+  df <- data.frame(mu = res$mu, sigma = res$sigma, w = res$w) %>% 
+    filter(w >= quantile(w, 0.7))
+  
+  plot_labels <- letters[seed_d]
+  
+  p <- ggplot(df, aes(x = mu, y = sigma)) +
+    geom_point(aes(size = w)) +
+    scale_size_continuous(range = c(0.1, 3)) +  
+    annotate("point", x = 2, y = 1, color = "red", shape = 4, size = 10, stroke = 2) +  
+    theme_minimal() +
+    labs(title = paste0("(", plot_labels, ")"),
+         x = expression(mu),
+         y = expression(sigma),
+         size = "Weight (w)") +
+    theme(legend.position = "none")
+  
+  plots[[seed_d]] <- p
+}
+
+
+combined_plot <- plots[[1]] + plots[[2]] + plots[[3]] + plots[[4]]
+  plot_layout(nrow = 2, ncol=2, guides = "collect") & theme(legend.position = "right")
+
+
+
+show(combined_plot)
+
+```
+
+
+
+

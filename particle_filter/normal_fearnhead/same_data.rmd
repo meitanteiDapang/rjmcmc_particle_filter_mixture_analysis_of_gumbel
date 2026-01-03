@@ -1,0 +1,143 @@
+---
+title: "same_data"
+output: html_document
+date: "2025-09-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data
+
+```{r}
+source("../../dir_manager.r")
+source(file.path(dir_path,"particle_filter/normal_not_fearnhead/pf_normal_k.r"))
+set.seed(6291117)
+
+
+
+k <- 3
+
+n <- 200
+pi.1 <- 2/10
+pi.2 <- 3/10
+pi.3 <- 5/10
+pi_true <- c(pi.1, pi.2, pi.3)
+mu_true <- c( -5,    0,    5)
+tau_true <- c(2, 5, 1)
+sigma_true<- sqrt(1/tau_true)
+
+y <- c()
+
+for(i in c(1:k)){
+  y.k <- rnorm(n*pi_true[i], mean = mu_true[i], sd = sigma_true[i])
+  cat("simulated mu k= ",i," :", mean(y.k), "\n")
+  cat("simulated tau k= ",i," :", 1/sd(y.k)^2, "\n")
+  y <- c(y, y.k)
+}
+
+
+y <- sample(y)
+
+plot(density(y))
+```
+
+
+```{r}
+aa = -10
+bb = 20
+x.grid <- seq(aa, bb , length.out = 500)
+df_points <- data.frame(x = y, y = rep(0, length(y)))
+```
+
+### prior
+
+```{r}
+alpha <- 0.5
+a <- 0.1
+b <- 0.1
+xi <- 0
+phi <- 1000; kappa <- 1/phi
+
+
+
+delta <- 1
+lambda <- 3
+```
+
+
+### PF Init = 1
+
+```{r}
+source(file.path(dir_path,"particle_filter/normal_fearnhead/pf_normal.r"))
+set.seed(6291117)
+
+N <- 300
+
+
+tic("Run Fearnhead PF:")
+res <- pf_normal(y, N,
+                       a, b, xi, phi, alpha,
+                       initial_size = 1,
+                      verbose = TRUE) 
+toc()
+particles <- res[[1]]
+weights <- res[[2]]
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/normal_fearnhead/normal_helper.r"))
+mid_list <- merge_same(particles, weights, toPrint=FALSE)
+uni_particles <- mid_list$uni_particles
+uni_w <- mid_list$uni_w
+
+N_uni_particles <- length(uni_particles)
+cat("unique particles: ", N_uni_particles, "\n")
+
+
+```
+
+
+```{r}
+first_n <- 10
+
+print(sapply(uni_particles[1:first_n], function(s){length(unique(s))}))
+print(uni_w[1:first_n])
+```
+
+
+```{r}
+source(file.path(dir_path, "particle_filter/normal_fearnhead/normal_helper.r"))
+
+k_index <- get_particle_indices_by_k(uni_particles, 3)
+k_particles <- uni_particles[k_index]
+k_w <- uni_w[k_index]
+
+k_w <- k_w/sum(k_w)
+
+samples_to_get <- 3000
+est_fearnhead <- get_posterior_parameters_normal(k_particles,k_w, 3, samples_to_get, xi, kappa, a, b, y)
+
+```
+
+```{r}
+source(file.path(dir_path, "particle_filter/fearnhead_utilities.r"))
+
+pp <- plot_threepanel_density(
+  est_fearnhead,
+  k = 3,
+  truths = list(mu = mu_true, tau = tau_true, pi = pi_true)
+)
+
+ggsave(
+  file.path(pic_path, "pf_fearnhead", "normal", "same.png"),
+  pp,
+  width = 6,
+  height = 10
+)
+```
+
+
+
