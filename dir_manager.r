@@ -14,7 +14,6 @@ packages <- c(
   "gtools"
 )
 real_pi <- pi
-# Another package: mixAK is needed.
 
 install_if_missing <- function(pkg) {
   if (!require(pkg, character.only = TRUE)) {

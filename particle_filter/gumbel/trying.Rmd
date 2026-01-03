@@ -41,18 +41,18 @@ set.seed(100)
 
 
 
-# ==== Monte Carlo S值列表 ====
+# ==== Monte Carlo S value list ====
 S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
 n_rep <- 1
 
-# ==== 保存结果 ====
+# ==== Save results ====
 results <- data.frame(
   S = S_values,
   log_likelihood = NA,
   relative_error = NA
 )
 
-# ==== 多次运行并取平均 ====
+# ==== Run multiple times and average ====
 for (i in seq_along(S_values)) {
   S <- S_values[i]
   
@@ -74,7 +74,7 @@ for (i in seq_along(S_values)) {
   results$relative_error[i] <- mean(rels, na.rm = TRUE)
 }
 
-# ==== 作图 ====
+# ==== Plot results ====
 library(ggplot2)
 ggplot(results, aes(x = S, y = relative_error)) +
   geom_line() +
@@ -130,20 +130,20 @@ gamma_params <- estimate_gamma_proposal(Y, NN)
 
 
 ```{r}
-# ==== Monte Carlo S值列表 ====
+# ==== Monte Carlo S value list ====
 S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
 n_rep <- 1
 
 set.seed(132)
 
-# ==== 保存结果 ====
+# ==== Save results ====
 results <- data.frame(
   S = S_values,
   log_likelihood = NA,
   relative_error = NA
 )
 
-# ==== 多次运行并取平均 ====
+# ==== Run multiple times and average ====
 for (i in seq_along(S_values)) {
   S <- S_values[i]
   
@@ -167,7 +167,7 @@ for (i in seq_along(S_values)) {
   results$relative_error[i] <- mean(rels, na.rm = TRUE)
 }
 
-# ==== 作图 ====
+# ==== Plot results ====
 library(ggplot2)
 ggplot(results, aes(x = S, y = relative_error)) +
   geom_line() +
@@ -197,7 +197,7 @@ source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r"))
 NN_values <- c(2, 5, 10, 30, 100, 1000)
 tau_values <- c(2, 0.5, 1)
 S_values <- c(100, 200, 400, 500, 1000, 5000, 10000, 20000, 50000, 100000)
-n_rep <- 1  # 可设为 10 平滑曲线
+n_rep <- 1  # Set to 10 for smoother curves
 
 
 eta <- 1
@@ -256,7 +256,7 @@ estimate_gamma_proposal <- function(Y, NN, base_fraction = 0.5) {
 NN_values <- c(2, 5, 10, 30, 100, 1000)
 tau_values <- c(2, 0.5, 1)
 S_values <- c(100,200,400, 500, 1000, 5000, 10000, 20000, 50000, 100000)
-n_rep <- 1  # 可改为10增强平滑性
+n_rep <- 1  # Set to 10 for smoother curves
 
 
 eta <- 1
@@ -292,13 +292,13 @@ ggsave(
 library(evd)
 library(ggplot2)
 
-# ==== 加载函数 ====
+# ==== Load helper functions ====
 source("../../dir_manager.r")
 source(file.path(dir_path, "particle_filter/gumbel/gumbel_MC.r")) 
 
 my_rate <- 1/4
 
-# ==== 参数组合 ====
+# ==== Parameter grid ====
 NN_values <- c(2,5, 10, 30, 100, 1000)
 tau_values <- c(2, 0.5, 1)
 S_values <- c(100, 500, 1000, 5000, 10000, 20000, 50000, 100000)
@@ -387,10 +387,10 @@ print(res)
 
 source("../../dir_manager.r")
 source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
-# 示例数据
+# Example data
 set.seed(42)
 
-# 估计
+# Estimate
 result <- estimate_likelihood_gumbel_MC_uniform_total(
   Y = Y, Z = Z,
   eta , phi ,
@@ -456,16 +456,16 @@ source(file.path(dir_path,"particle_filter/gumbel/gumbel_MC.r"))
 
 
 
-# Step 1: 设置自定义区间
+# Step 1: Set custom ranges
 SSSS <- 500
 
 mu_range <- seq(0.75, 1.5, length.out = SSSS)
 tau_range <- seq(2.25, 3.75, length.out = SSSS)
 
-# Step 2: 构建参数网格
+# Step 2: Build parameter grid
 grid <- expand.grid(mu = mu_range, tau = tau_range)
 
-# Step 3: 计算 log f(mu, tau)
+# Step 3: Compute log f(mu, tau)
 grid$logf <- apply(grid, 1, function(row) {
   val <- my_integrand(
     mu = as.numeric(row["mu"]),
@@ -478,10 +478,10 @@ grid$logf <- apply(grid, 1, function(row) {
   val  # Already log(f), no need to log again
 })
 
-# Step 4: 去除无效点
+# Step 4: Drop invalid points
 grid <- grid[is.finite(grid$logf), ]
 
-# Step 5: 绘制等高热力图
+# Step 5: Draw filled contour heat map
 library(ggplot2)
 ggplot(grid, aes(x = mu, y = tau, z = logf)) +
   geom_contour_filled(bins = 30) +
@@ -570,4 +570,3 @@ res <- estimate_log_likelihood_given_Z_by_MC(
 
 print(res)
 ```
-

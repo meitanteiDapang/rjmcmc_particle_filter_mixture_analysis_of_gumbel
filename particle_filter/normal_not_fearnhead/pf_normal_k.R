@@ -40,14 +40,14 @@ lot_resample_mix_params <- function(mu_mat, sigma_mat, pi_mat, w,
   if (!requireNamespace("ggplot2", quietly = TRUE)) stop("Need 'ggplot2'.")
   if (!requireNamespace("cowplot", quietly = TRUE)) stop("Need 'cowplot'.")
 
-  # 标题表达式：(a) density of underline(mu[j]) / sigma / pi
+  # Title expression: (a) density of underline(mu[j]) / sigma / pi
   make_title <- function(sym, j, lab) {
-    # sym 为 "mu"/"sigma"/"pi"
+    # sym is "mu"/"sigma"/"pi"
     sym_expr <- as.name(sym)
     bquote(.(lab) * " density of " * underline(.(sym_expr)[.(j)]))
   }
 
-  # x 轴标签表达式：mu[j] / sigma[j] / pi[j]
+  # x-axis label expression: mu[j] / sigma[j] / pi[j]
   make_xlab <- function(sym, j) {
     sym_expr <- as.name(sym)
     bquote(.(sym_expr)[.(j)])

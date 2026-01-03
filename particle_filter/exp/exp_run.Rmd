@@ -193,17 +193,17 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 准备数据
+# Prepare data
 df <- as.data.frame(target_est[1:samples_to_get, 1:4])
 colnames(df) <- c("lambda[1]", "lambda[2]", "pi[1]", "pi[2]")
 
-# 转为长格式
+# Convert to long format
 df_long <- df %>%
   pivot_longer(cols = everything(),
                names_to = "parameter",
                values_to = "value")
 
-# 绘图
+# Plot
 ggplot(df_long, aes(x = value)) +
   geom_density(colour = "red", size = 1) +
   facet_wrap(~ parameter, scales = "free", ncol = 2, labeller = label_parsed) +
@@ -410,7 +410,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 假设 input_lambda 和 ttt 已定义
+# Assume input_lambda and ttt are defined
 lambda_true_pre <- c(1/ttt^2 * input_lambda, 1/ttt * input_lambda, 1 * input_lambda )
 pi_true_pre <- c(1/3, 1/6, 1/2)
 
@@ -419,7 +419,7 @@ lambda_names <- paste0("lambda[", 1:k, "]")
 pi_names <- paste0("pi[", 1:k, "]")
 col_names <- c(lambda_names, pi_names)
 
-# 提取后验样本并转换为长格式
+# Extract posterior samples and convert to long format
 df <- as.data.frame(target_est[1:samples_to_get, 1:(2 * k)])
 colnames(df) <- col_names
 
@@ -428,13 +428,13 @@ df_long <- df %>%
                names_to = "parameter",
                values_to = "value")
 
-# 创建 true 值的数据框
+# Build data frame of true values
 true_values <- data.frame(
   parameter = factor(c(lambda_names, pi_names), levels = c(lambda_names, pi_names)),
   true_value = c(lambda_true_pre, pi_true_pre)
 )
 
-# 绘图
+# Plot
 ggplot(df_long, aes(x = value)) +
   geom_density(colour = "red", size = 1) +
   geom_vline(data = true_values, aes(xintercept = true_value), colour = "black", linetype = "dashed", size = 0.8) +
@@ -454,12 +454,12 @@ ggplot(df_long, aes(x = value)) +
 library(GGally)
 library(ggplot2)
 
-# 假设你有 posterior samples 的 data frame，包含 lambda1, lambda2, lambda3, pi1, pi2, pi3
-posterior_df <- as.data.frame(target_est[1:samples_to_get, 1:6])  # 例子
+# Assume posterior samples data frame contains lambda1, lambda2, lambda3, pi1, pi2, pi3
+posterior_df <- as.data.frame(target_est[1:samples_to_get, 1:6])  # example
 
 colnames(posterior_df) <- c("lambda1", "lambda2", "lambda3", "pi1", "pi2", "pi3")
 
-# 绘制 corner plot
+# Draw corner plot
 ggpairs(posterior_df)
 ```
 
@@ -471,34 +471,34 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 设置 k 和真值
+# Set k and true values
 k <- 3
 lambda_true_pre <- c(1 * input_lambda, 1/ttt^2 * input_lambda, 1/ttt * input_lambda)
 pi_true_pre <- c(1/2, 1/3, 1/6)
 
-# 构建列名
+# Build column names
 lambda_names <- paste0("lambda[", 1:k, "]")
 pi_names <- paste0("pi[", 1:k, "]")
 col_names <- c(lambda_names, pi_names)
 
-# 构建数据框
+# Build data frame
 df <- as.data.frame(target_est[1:samples_to_get, 1:(2 * k)])
 colnames(df) <- col_names
 
-# 转为长格式并加上类型标签
+# Convert to long format and tag parameter type
 df_long <- df %>%
   pivot_longer(cols = everything(),
                names_to = "parameter",
                values_to = "value") %>%
   mutate(type = ifelse(grepl("pi", parameter), "pi", "lambda"))
 
-# 创建真值数据框
+# Build true-value data frame
 true_vals_df <- data.frame(
   parameter = factor(c(lambda_names, pi_names), levels = c(lambda_names, pi_names)),
   true_value = c(lambda_true_pre, pi_true_pre)
 )
 
-# 分开画图后组合，并添加真值线
+# Plot lambda/pi separately, combine, and add true-value lines
 p <- ggplot() +
   geom_density(
     data = df_long %>% filter(type == "lambda"),
@@ -528,4 +528,3 @@ print(p)
 
 
 ```
-

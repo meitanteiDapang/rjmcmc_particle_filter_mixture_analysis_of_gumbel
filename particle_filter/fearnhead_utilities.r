@@ -46,7 +46,7 @@ normalize_log_weights <- function(log_weights) {
   return(normalized_weights)
 }
 get_particle_indices_by_k <- function(uni_particles, k) {
-  # 返回uni_particles中，cluster数为k的particle的索引
+  # Indices of uni_particles whose cluster count equals k
   which(sapply(uni_particles, function(particle) {
     length(unique(particle)) == k
   }))

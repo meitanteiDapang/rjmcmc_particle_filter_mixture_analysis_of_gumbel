@@ -368,7 +368,7 @@ plot_coverage <- function(df, y_label, true_value, sub_title) {
   ggplot(df, aes(x = x, y = m)) +
     geom_errorbar(aes(ymin = lower, ymax = upper),
                   width = 0.1, color = "red") +
-    geom_point(color = "blue", size = 0.5) +  # 点小一点
+    geom_point(color = "blue", size = 0.5) +  # use smaller points
     geom_hline(yintercept = true_value, color = "black") +
     labs(x = "Dataset", y = y_label, title = sub_title) +
     theme_minimal() +
@@ -379,7 +379,7 @@ plot_coverage <- function(df, y_label, true_value, sub_title) {
     )
 }
 
-# 生成带子标题的小图
+# Build small plots with subtitles
 p1 <- plot_coverage(analyse_list1$mu_coverage_table_list[[1]],  expression(mu),  order_mu[1],  expression(mu[1]))
 p2 <- plot_coverage(analyse_list1$mu_coverage_table_list[[2]],  expression(mu),  order_mu[2],  expression(mu[2]))
 p3 <- plot_coverage(analyse_list1$mu_coverage_table_list[[3]],  expression(mu),  order_mu[3],  expression(mu[3]))
@@ -392,7 +392,7 @@ p7 <- plot_coverage(analyse_list1$pi_coverage_table_list[[1]],  expression(pi), 
 p8 <- plot_coverage(analyse_list1$pi_coverage_table_list[[2]],  expression(pi),  order_pi[2],  expression(pi[2]))
 p9 <- plot_coverage(analyse_list1$pi_coverage_table_list[[3]],  expression(pi),  order_pi[3],  expression(pi[3]))
 
-# 拼成大图（3x3）
+# Combine into a 3x3 grid
 final_plot <- (p1 | p2 | p3) /
               (p4 | p5 | p6) /
               (p7 | p8 | p9)
@@ -401,4 +401,3 @@ final_plot
 
 
 ```
-

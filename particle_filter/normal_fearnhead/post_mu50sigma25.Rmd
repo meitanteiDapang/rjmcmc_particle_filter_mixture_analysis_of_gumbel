@@ -395,7 +395,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     source_labels <- paste0("source", seq_along(mat_list))
   }
 
-  # 设置真值
+  # Set true values
   true_vals <- switch(param_type,
     mu  = mu_true,
     tau = tau_true,
@@ -403,7 +403,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     NULL
   )
 
-  # 提取并处理每个 matrix
+  # Extract and process each matrix
   all_data <- lapply(seq_along(mat_list), function(i) {
     mat <- mat_list[[i]]
     label <- source_labels[[i]]
@@ -418,7 +418,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     df <- as.data.frame(mat[, col_idx])
     colnames(df) <- paste0(param_type, 1:k)
 
-    # 针对 pi 参数进行特殊处理
+    # Special handling for pi parameters
     if (param_type == "pi") {
       df_processed <- df
       low_sd_flags <- sapply(df_processed, function(col) {
@@ -435,7 +435,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
       df <- df_processed
     }
 
-    # 转换为 long 格式并标记 low_sd
+    # Convert to long format and mark low_sd
     df_long <- df %>%
       pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
       mutate(
@@ -456,7 +456,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
 
   df_combined <- bind_rows(all_data)
 
-  # 设置 x 轴标签
+  # Set x-axis label
   x_label_expr <- switch(param_type,
     mu = expression(mu),
     tau = expression(tau),
@@ -464,7 +464,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     param_type
   )
 
-  # 初始化 ggplot 对象
+  # Initialize ggplot object
   p <- ggplot() +
     theme_minimal() +
     labs(
@@ -474,7 +474,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     ) +
     scale_linetype_discrete(labels = function(x) parse(text = x))
 
-  # 绘制每个组合密度线，使用不同 adjust 值
+  # Plot density lines for each combination with per-group adjust
   group_vars <- df_combined %>% distinct(source, parameter, adjust_val)
 
   for (i in seq_len(nrow(group_vars))) {
@@ -489,7 +489,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     )
   }
 
-  # 添加真值线
+  # Add reference lines for true values
   if (!is.null(true_vals)) {
     for (i in seq_along(true_vals)) {
       p <- p + geom_vline(
@@ -538,33 +538,6 @@ plot(density(est_fearnhead[,7]))
 ```
 
 
-
-## MIXAK
-
-```{r}
-library(mixAK)
-prior <- list(
-  priorK = "tpoisson",
-  Kmax = 10,
-  priormuQ = "independentC",
-  xi = 0,
-  D = phi,
-  zeta = 3,
-  g = 0.2,
-  h = 10,
-  delta = 1
-)
-
-fit <- NMixMCMC(
-  y0 = y,
-  prior = prior,
-  nMCMC = c(burn = 1000, keep = 5000, thin = 5, info=500)
-)
-
-
-summary(fit)
-fit$propK # 查看K的后验分布
-```
 
 ## more clusters
 ## mu=5, sigma=2.5

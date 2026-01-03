@@ -271,7 +271,7 @@ ggsave(
 ### estimated density
 
 ```{r}
-# ---------- 基础数据 ----------
+# ---------- Base data ----------
 est <- est_rjmcmc_all
 k   <- as.integer(est$k)
 mu  <- as.matrix(est$mu)
@@ -280,17 +280,17 @@ w   <- as.matrix(est$pi)
 T_eff <- length(k)
 Kmax  <- ncol(mu)
 
-# ---------- Gumbel(maxima) 密度（参数 tau = 1/b） ----------
+# ---------- Gumbel(maxima) density (tau = 1/b) ----------
 dGumbelMax_tau <- function(x, mu, tau) {
   b <- 1 / tau
   z <- (x - mu) / b
   (1 / b) * exp(-(z + exp(-z)))
 }
 
-# ---------- 手动设置绘图范围 ----------
+# ---------- Manually set plotting range ----------
 x_grid <- seq(0.5, 1.5, length.out = 400)
 
-# ---------- 计算模型平均密度 ----------
+# ---------- Compute model-averaged density ----------
 Fx <- matrix(0.0, nrow = length(x_grid), ncol = T_eff)
 
 for (t in seq_len(T_eff)) {
@@ -304,7 +304,7 @@ for (t in seq_len(T_eff)) {
 
 f_mean <- rowMeans(Fx)
 
-# ---------- 画图 ----------
+# ---------- Plot ----------
 library(ggplot2)
 df_plot <- data.frame(x = x_grid, mean = f_mean)
 
@@ -440,13 +440,13 @@ ggsave(
 ```{r}
 library(ggplot2)
 
-# Gumbel 密度函数 (参数化为 tau = 1/scale)
+# Gumbel density (parameterized as tau = 1/scale)
 d_gumbel_tau <- function(x, mu, tau) {
   eta <- tau * (x - mu)
   tau * exp(-eta - exp(-eta))
 }
 
-# === 主程序 ===
+# === Main routine ===
 xgrid <- seq(0.5, 1.5, length.out = 400)
 dens_mix <- numeric(length(xgrid))
 
@@ -456,33 +456,33 @@ for (i in seq_along(uni_particles)) {
 
   cat("Particle", i, "with k =", k_i, "\n")
 
-  # 对该粒子单独抽样
+  # Sample parameters for this particle
   params_i <- get_posterior_parameters_gumbel(
-    particles = list(zz),     # 单个粒子
-    weights = 1,              # 权重=1
+    particles = list(zz),     # single particle
+    weights = 1,              # weight = 1
     k = k_i,
-    samples_to_get = 200,      # 抽样数可根据精度调整
+    samples_to_get = 200,      # adjust sample count for desired precision
     y = y,
     eta = xi, phi = phi, a = a, b = b
   )
 
-  # 对该粒子的每个参数样本计算密度
+  # Compute density for each parameter sample of this particle
   for (s in seq_len(nrow(params_i))) {
     mu_vec  <- params_i[s, 1:k_i]
     tau_vec <- pmax(params_i[s, (k_i+1):(2*k_i)], 1e-8)
     pi_vec  <- pmax(params_i[s, (2*k_i+1):(3*k_i)], 0)
     pi_vec  <- pi_vec / sum(pi_vec)
 
-    # 计算在xgrid上的混合密度
+    # Compute mixture density on xgrid
     dens_comp <- sapply(seq_len(k_i), function(j) d_gumbel_tau(xgrid, mu_vec[j], tau_vec[j]))
     dens_i_s <- dens_comp %*% pi_vec
 
-    # 累加带权密度
+    # Accumulate weighted density
     dens_mix <- dens_mix + uni_w[i] * dens_i_s / nrow(params_i)
   }
 }
 
-# 归一化（可选，使积分约为1）
+# Normalize (optional; keeps integral near 1)
 dx <- diff(xgrid)[1]
 dens_mix <- dens_mix / sum(dens_mix * dx)
 
@@ -491,7 +491,7 @@ dens_mix <- dens_mix / sum(dens_mix * dx)
 ```
 
 ```{r}
-# 绘图
+# Plot
 df <- data.frame(x = xgrid, dens = as.numeric(dens_mix))
 ggplot(df, aes(x, dens)) +
   geom_line(linewidth = 0.9) +
@@ -537,5 +537,3 @@ ggplot() +
   theme(legend.position = "right")
 
 ```
-
-

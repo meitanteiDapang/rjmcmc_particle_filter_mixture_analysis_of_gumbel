@@ -473,7 +473,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
 
   use_adjust <- any(df_combined$low_sd)
 
-  # 创建 ggplot 基础图
+  # Build base ggplot figure
   p <- ggplot(df_combined, aes(x = value, linetype = parameter, colour = source)) +
     (if (use_adjust) geom_density(size = 1, alpha = 0.8, adjust = 0.01)
      else geom_density(size = 1, alpha = 0.8)) +
@@ -485,7 +485,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     ) +
     scale_linetype_discrete(labels = function(x) parse(text = x))
 
-  # 添加真值线：不使用 aes，而是直接指定 xintercept
+  # Add reference lines for true values without using aes
   if (!is.null(true_vals)) {
     for (i in seq_along(true_vals)) {
       p <- p + geom_vline(
@@ -532,4 +532,3 @@ plot_posterior_density_multi(
 ```{r}
 plot(density(est_fearnhead[,7]))
 ```
-

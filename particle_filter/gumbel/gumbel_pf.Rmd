@@ -1000,17 +1000,17 @@ combine_parameters_matrix <- function(lst_only4) {
   tau_mat <- lst_only4$tau
   w_mat <- lst_only4$w
 
-  # 获取维度
+  # Get dimensions
   N <- nrow(mu_mat)
   k <- ncol(mu_mat)
 
-  # 安全检查（可选）
+  # Safety check (optional)
   stopifnot(all(dim(tau_mat) == c(N, k)), all(dim(w_mat) == c(N, k)))
 
-  # 合并
+  # Combine parameter matrices
   combined_mat <- cbind(mu_mat, tau_mat, w_mat)
 
-  # 设置列名
+  # Set column names
   colnames(combined_mat) <- c(
     paste0("mu", 1:k),
     paste0("tau", 1:k),
@@ -1139,7 +1139,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
 
   use_adjust <- any(df_combined$low_sd)
 
-  # 创建 ggplot 基础图
+  # Build base ggplot figure
   p <- ggplot(df_combined, aes(x = value, linetype = parameter, colour = source)) +
     (if (use_adjust) geom_density(size = 1, alpha = 0.8, adjust = 0.01)
      else geom_density(size = 1, alpha = 0.8)) +
@@ -1151,7 +1151,7 @@ plot_posterior_density_multi <- function(mat_list, param_type = "mu", k, source_
     ) +
     scale_linetype_discrete(labels = function(x) parse(text = x))
 
-  # 添加真值线：不使用 aes，而是直接指定 xintercept
+  # Add reference lines for true values without using aes
   if (!is.null(true_vals)) {
     for (i in seq_along(true_vals)) {
       p <- p + geom_vline(
@@ -1368,19 +1368,19 @@ lst2 <- split_combine(lst)
 
 ```{r}
 merge_gaussian_components <- function(w1, w2, mu1, mu2, sigma1, sigma2) {
-  # step 1: 合并权重
+  # step 1: merge weights
   w_star <- w1 + w2
   
-  # step 2: 合并后的均值
+  # step 2: merged mean
   mu_star <- (w1 * mu1 + w2 * mu2) / w_star
   
-  # step 3: 合并后的 mu^2 + sigma^2
+  # step 3: merged mu^2 + sigma^2
   mu2_sigma2_star <- (w1 * (mu1^2 + sigma1) + w2 * (mu2^2 + sigma2)) / w_star
   
-  # step 4: 合并后的方差 (sigma_star)
+  # step 4: merged variance (sigma_star)
   sigma_star <- mu2_sigma2_star - mu_star^2
   
-  # 返回全部中间量
+  # return all intermediates
   list(
     w_star = w_star,
     mu_star = mu_star,
@@ -1394,30 +1394,29 @@ print(merge_components(0.2, 0.1, 5.8, 6.3, 5, 1))
 ```
 ```{r}
 merge_precision_components <- function(w1, w2, mu1, mu2, tau1, tau2) {
-  # 合并权重
+  # Merge weights
   w_star <- w1 + w2
   
-  # 合并均值
+  # Merge means
   mu_star <- (w1 * mu1 + w2 * mu2) / w_star
   
-  # 计算tau_star的倒数
+  # Compute reciprocal of tau_star
   inv_tau_star <- (w1 / w_star) * (mu1^2 + 1 / tau1) +
                   (w2 / w_star) * (mu2^2 + 1 / tau2) -
                   mu_star^2
   
-  # 合并后的精度
+  # Merged precision
   tau_star <- 1 / inv_tau_star
   
-  # 返回所有结果
+  # Return all results
   list(
     w_star = w_star,
     mu_star = mu_star,
     tau_star = tau_star,
-    sigma2_star = 1 / tau_star # 合并后的方差（可选）
+    sigma2_star = 1 / tau_star # merged variance (optional)
   )
 }
 
 print(merge_components(0.2, 0.1, 5.8, 6.3, 1/5, 1))
 
 ```
-

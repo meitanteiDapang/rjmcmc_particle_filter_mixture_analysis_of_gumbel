@@ -155,16 +155,7 @@ plot_rjmcmc_sixpanel(
 ```
 
 
-### mixAK
-
-```{r}
-library(mixAK)
-parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
-
-set.seed(20250813)
-
 # ── Load the data ───────────────────────────────────────────────────────────────
-data("Galaxy", package = "mixAK")
 
 # ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
 GalaxyPrior <- list(
@@ -203,86 +194,14 @@ print(GalaxyModel)
 
 
 ```{r}
-K <- GalaxyModel$K           # K 的马尔可夫链
+K <- GalaxyModel$K           # Markov chain for K
 n_change <- sum(diff(K) != 0)
-n_up     <- sum(diff(K) == +1)  # 近似认为是 birth 或 split
+n_up     <- sum(diff(K) == +1)  # roughly counts birth or split moves
 n_down   <- sum(diff(K) == -1) 
 ```
 
 
 
-```{r}
-## ── Relabel（如果 KMeans 出错就退回原链） ─────────────────────────────
-fit_lab <- tryCatch(
-  NMixRelabel(GalaxyModel, type = "KMeans"),
-  error = function(e) GalaxyModel
-)
-
-## 提取后验样本矩阵（迭代 × Kmax）
-post_mu  <- as.matrix(fit_lab$mu)   # 组件均值
-post_tau <- as.matrix(fit_lab$Q)    # 精度（precision）
-post_w   <- as.matrix(fit_lab$w)    # 权重（每行加和≈1）
-
-## 计算每次迭代的“非空分量数” K_+（用一个很小的阈值）
-w_eps   <- 1e-8
-K_plus  <- rowSums(post_w > w_eps)
-
-## 标记几乎始终为空的分量（平均权重极小）
-w_bar   <- colMeans(post_w)
-almost_empty <- w_bar < 1e-3   # 你可把 1e-3 改成 1e-4 等更严格阈值
-
-## 小工具：把图例名字加上 * 标星以提示“几乎空”
-mk_leg <- function(prefix, K, flag_empty) {
-  base <- paste0(prefix, 1:K)
-  base[flag_empty[seq_len(K)]] <- paste0(base[flag_empty[seq_len(K)]], " *")
-  base
-}
-
-## 通用绘图函数（trace + density）
-plot_trace_density <- function(M, ylab_expr, title_prefix, flag_empty = NULL) {
-  stopifnot(is.matrix(M))
-  K <- ncol(M)
-  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
-            "#17becf", "#bcbd22", "#7f7f7f", "#e377c2", "#ff7f0e")[seq_len(K)]
-  par(mfrow = c(1, 2), mar = c(4,4,2,1))
-
-  # 左：trace 同图叠加
-  matplot(M, type = "l", lty = 1, col = cols,
-          xlab = "Iteration", ylab = ylab_expr,
-          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
-  leg_txt <- mk_leg(title_prefix, K, if (is.null(flag_empty)) rep(FALSE, K) else flag_empty)
-  legend("topright", legend = leg_txt, col = cols, lty = 1, bty = "n", cex = 0.9)
-
-  # 右：density 同图叠加
-  dens <- lapply(1:K, function(j) density(M[, j]))
-  xlim <- range(unlist(lapply(dens, `[[`, "x")))
-  ylim <- range(unlist(lapply(dens, `[[`, "y")))
-  plot(dens[[1]], xlim = xlim, ylim = ylim,
-       main = paste0("Posterior density of ", title_prefix),
-       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
-  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
-  legend("topright", legend = leg_txt, col = cols, lwd = 2, bty = "n", cex = 0.9)
-}
-
-## 画 μ
-plot_trace_density(post_mu, expression(mu[j]), "mu", almost_empty)
-
-## 画 τ（precision）
-plot_trace_density(post_tau, expression(tau[j]), "tau", almost_empty)
-
-## 画 w（权重；密度在 [0,1]）
-plot_trace_density(post_w, expression(w[j]), "w", almost_empty)
-
-## 额外：画 K_+ 的 trace 与直方图，观察“birth 后空分量”的动态
-par(mfrow = c(1,2), mar = c(4,4,2,1))
-plot(K_plus, type = "l", xlab = "Iteration", ylab = expression(K["+"]),
-     main = expression("Trace of " ~ K["+"]))
-hist(K_plus, breaks = seq(min(K_plus)-0.5, max(K_plus)+0.5, by=1),
-     xlab = expression(K["+"]), main = expression("Histogram of " ~ K["+"]))
-mtext("(*) legend 中标星的组件：平均权重极小，几乎始终为空", side = 3, line = -1.5, adj = 0, cex = 0.8)
-
-
-```
 
 
 
@@ -414,8 +333,6 @@ plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
 source("../dir_manager.r")
 source(file.path(dir_path,"rjmcmc_normal/rjmcmc.r"))
 
-library(mixAK)
-data("Galaxy", package = "mixAK")
 
 y <- Galaxy
 
@@ -434,18 +351,7 @@ lambda <- 3
 ```
 
 
-### RG mixAK
-
-```{r}
-
-
-
-parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
-
-set.seed(20250813)
-
 # ── Load the data ───────────────────────────────────────────────────────────────
-data("Galaxy", package = "mixAK")
 
 # ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
 GalaxyPrior <- list(
@@ -484,56 +390,8 @@ print(GalaxyModel)
 
 ### AKPaper mixak
 
-```{r}
-library(mixAK)
-set.seed(20250813)
-
-# ── Load the data ───────────────────────────────────────────────────────────────
-data("Galaxy", package = "mixAK")
-
-# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
-GalaxyPrior <- list(
-  priorK   = "uniform",
-  Kmax     = 30,
-  delta    = 1,
-  priormuQ = "independentC",
-  xi       = 21.73,
-  D        = 630.5121,
-  zeta     = 2 * 2,
-  g        = 0.2,
-  h        = 0.016 / 2
-)
-
-parRJMCMC <- list(
-  par.u1 = c(2, 2),
-  par.u2 = c(2, 2),
-  par.u3 = c(1, 1)
-)
-
-# ── Run MCMC ────────────────────────────────────────────────────────────────────
-GalaxyModel <- NMixMCMC(
-  y0     = Galaxy,
-  prior  = GalaxyPrior,
-  RJMCMC = parRJMCMC,
-  nMCMC  = c(burn = 100000, keep = 500000, thin = 10, info = 10000),
-  scale  = list(shift = 0, scale = 1),
-  PED    = FALSE
-)
-
-# ── Basic posterior summary & predictive density ────────────────────────────────
-print(GalaxyModel)
-
-```
 
 
-### poisson mixAK
-
-```{r}
-
-library(mixAK)
-data("Galaxy", package = "mixAK")
-
-y <- Galaxy
 # prior
 R = 25.11
 g = 0.2
@@ -548,96 +406,8 @@ lambda <- 3
 ```
 
 
-```{r}
-
-library(mixAK)
-
-parRJMCMC <- list(par.u1 = c(2, 2), par.u2 = c(2, 2), par.u3 = c(1, 1))
-
-set.seed(0813)
-
-# ── Load the data ───────────────────────────────────────────────────────────────
-data("Galaxy", package = "mixAK")
-
-# ── Specify prior and RJMCMC tuning ─────────────────────────────────────────────
-GalaxyPrior <- list(
-  priorK   = "tpoisson",
-  Kmax     = 10,
-  delta    = 1,
-  priormuQ = "independentC",
-  xi       = 21.73,
-  D        = 1/kappa,
-  zeta     = 2 * a,
-  g        = 0.2,
-  h        = 0.016,
-  lambda   = 3
-)
-
-parRJMCMC <- list(
-  par.u1 = c(2, 2),
-  par.u2 = c(2, 2),
-  par.u3 = c(1, 1)
-)
-
-# ── Run MCMC ────────────────────────────────────────────────────────────────────
-GalaxyModel <- NMixMCMC(
-  y0     = Galaxy,
-  prior  = GalaxyPrior,
-  RJMCMC = parRJMCMC,
-  nMCMC  = c(burn = 25000, keep = 25000, thin = 1, info = 10000),
-  scale  = list(shift = 0, scale = 1),
-  PED    = FALSE
-)
-
-# ── Basic posterior summary & predictive density ────────────────────────────────
-print(GalaxyModel)
-
-```
 
 
-```{r}
-
-fit_lab <- tryCatch(NMixRelabel(fit_ak, type = "KMeans"), error=function(e) fit_ak)
-post_mu  <- as.matrix(fit_lab$mu)
-post_tau <- as.matrix(fit_lab$Q)   # precision
-post_w   <- as.matrix(fit_lab$w)
-colMeans(post_mu); colMeans(post_tau); colMeans(post_w)
-
-
-plot_trace_density <- function(M, ylab_expr, title_prefix) {
-  stopifnot(is.matrix(M))
-  K <- ncol(M)
-  cols <- c("#1f77b4", "#2ca02c", "#d62728", "#9467bd", "#8c564b")[seq_len(K)]
-  par(mfrow = c(1, 2), mar = c(4,4,2,1))
-
-  # 左：trace 同图叠加
-  matplot(M, type = "l", lty = 1, col = cols,
-          xlab = "Iteration", ylab = ylab_expr,
-          main = paste0("Traces of ", title_prefix, "1,…,", title_prefix, K))
-  leg <- as.expression(lapply(1:K, function(j) bquote(.(as.name(title_prefix))[.(j)])))
-  legend("topright", legend = leg, col = cols, lty = 1, bty = "n")
-
-  # 右：density 同图叠加
-  dens <- lapply(1:K, function(j) density(M[,j]))
-  xlim <- range(unlist(lapply(dens, `[[`, "x")))
-  ylim <- range(unlist(lapply(dens, `[[`, "y")))
-  plot(dens[[1]], xlim = xlim, ylim = ylim,
-       main = paste0("Posterior density of ", title_prefix),
-       xlab = ylab_expr, ylab = "Density", col = cols[1], lwd = 2)
-  for (j in 2:K) lines(dens[[j]], col = cols[j], lwd = 2)
-  legend("topright", legend = leg, col = cols, lwd = 2, bty = "n")
-}
-
-## 画 μ
-plot_trace_density(post_mu, expression(mu[j]), "mu")
-
-## 画 τ（precision）
-plot_trace_density(post_tau, expression(tau[j]), "tau")
-
-## 画 w（权重；density 会在 [0,1]）
-plot_trace_density(post_w, expression(w[j]), "w")
-
-```
 
 
 
@@ -741,8 +511,6 @@ plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
 
 ```{r}
 
-library(mixAK)
-data("Galaxy", package = "mixAK")
 
 y <- Galaxy
 # prior
@@ -849,8 +617,6 @@ plot_rjmcmc_trace_and_density(lst_only3_after$pi,  "pi", est_k, sim_pi)
 ### RG PF
 
 ```{r}
-library(mixAK)
-data("Galaxy", package = "mixAK")
 
 y <- Galaxy
 # prior
@@ -914,18 +680,18 @@ cat("unique particles: ", N_uni_particles, "\n")
 ```{r}
 all_values <- sort(unique(unlist(uni_particles)))
 
-# 初始化一个命名向量存加权结果
+# Initialize a named vector to store weighted counts
 weighted_counts <- setNames(numeric(length(all_values)), all_values)
 
 print(weighted_counts)
 
-# 循环计算加权出现次数
+# Accumulate weighted occurrence counts
 for (i in seq_along(uni_particles)) {
   tab <- length(table(uni_particles[[i]]))
   weighted_counts[tab] <- weighted_counts[tab] + uni_w[i]
 }
 
-# 打印结果
+# Print results
 print(weighted_counts)
 
 ```
@@ -935,8 +701,6 @@ print(weighted_counts)
 ### fearnhead PF
 
 ```{r}
-library(mixAK)
-data("Galaxy", package = "mixAK")
 
 y <- Galaxy
 # prior
@@ -995,18 +759,18 @@ cat("unique particles: ", N_uni_particles, "\n")
 ```{r}
 all_values <- sort(unique(unlist(uni_particles)))
 
-# 初始化一个命名向量存加权结果
+# Initialize a named vector to store weighted counts
 weighted_counts <- setNames(numeric(length(all_values)), all_values)
 
 print(weighted_counts)
 
-# 循环计算加权出现次数
+# Accumulate weighted occurrence counts
 for (i in seq_along(uni_particles)) {
   tab <- length(table(uni_particles[[i]]))
   weighted_counts[tab] <- weighted_counts[tab] + uni_w[i]
 }
 
-# 打印结果
+# Print results
 print(weighted_counts)
 ```
 
@@ -1022,20 +786,17 @@ Regarding the prior distribution of k and weight in DPMM (or MDP) when the numbe
 
 Another important thing is that Richardson & Green (1997) discussed two hierarchical formulations. The first one is called "fixed beta", which I was using. Notation: y_i~N(mu_i, tau_i), and tau_i~Gamma(alpha, beta). Another one is "random beta", where they add an additional hierarchical level on beta, that beta~Gamma(g, h). We discussed at the very beginning that we would have a try for "fixed beta" firstly since I didn't understand why they introduce "random beta". Now, I get the point. They demonstrated that using "fixed beta" cannot achieve "real weak beta prior" for number of clusters k, but "random beta" can (see Fig 6 in R&G 1997). So they recommended the "random beta".
 
-The package mixAK is using "random beta", also I change my code to "random beta" (didn't change too much of previous code). Then I do some comparison.
 
 R&G shows the posterior of k for Galaxy data (Table 1) using uniform prior for k, and the distribution being (I ignore those being too small):
     4      5      6      7       8
     0.128  0.182  0.199  0.160   0.109
 
-Then I use the exact same setting and prior in mixAK, and get:
     4        5        6        7        8
     0.114628 0.215102 0.246970 0.185422 0.108132
 
 
 
 
-My code only supports poisson prior so far, I did another comparison between mixAK and my code using poisson prior, other prior and settings are same with the above:
 mixAk:
     4       5       6       7       8        
     0.17777 0.30451 0.26318 0.13620 0.05062
@@ -1056,7 +817,4 @@ I am using particle number N=3000, which is quite large; but still some valuable
 
 
 I'd like to know how these difference look to you from your experiences; but at least they are way more close compared with the one when I am using "fixed beta" version code. Also I am writing the part in thesis for FMM and normal RJMCMC; as planed, I will check the code with the mathematical terms carefully this week.
-
-
-
 

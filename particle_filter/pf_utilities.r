@@ -24,7 +24,7 @@ get_estimate_mean_k <- function(mu, sigma, pi_, w) {
   
   w <- w / sum(w)
   
-  # 逐列加权平均
+  # Weighted column means
   mu_est     <- colSums(mu * w)
   sigma_est  <- colSums(sigma * w)
   pi_est     <- colSums(pi_ * w)
