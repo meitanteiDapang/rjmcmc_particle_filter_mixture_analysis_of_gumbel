@@ -42,15 +42,18 @@ alpha <- 0.1
 beta <- 0.1
 delta <- 1
 
+
+set.seed(6291117)
+iter <- 50000
+burn.in <- iter/5
+
 ```
 
 ## k = 3
 
 ```{r}
 # k = 3
-set.seed(6291117)
-iter <- 50000
-burn.in <- iter/5
+
 
 
 k = 3
@@ -146,15 +149,17 @@ est_k4 <- est[[1]]
 # plot_trace_and_density(est_k4, burn.in, iter, "mu", truth=sim_mu)   # for mu
 # plot_trace_and_density(est_k4, burn.in, iter, "tau", truth=sim_tau)  # for tau
 # plot_trace_and_density(est_k4, burn.in, iter, "pi", truth=sim_pi)   # for pi
-
+source(file.path(dir_path,"rjmcmc_common/rjmcmc_plot.r"))
 pp <- plot_sixpanel_trace_density(
   est_k4,  burn.in, iter,
   truths = list(mu = sim_mu, tau = sim_tau, pi = sim_pi),
   trace_alpha = 0.25,
   legend_position = "bottom",
-  panel_label_size = 10
+  panel_label_size = 10,
+  mu_range = c(-10, 10),
+  tau_range = c(0, 10)
 )
-
+pp
 ggsave(
   file.path(pic_path, "rjmcmc_normal", "DIC_k", "k4", "k4.png"),
   pp,

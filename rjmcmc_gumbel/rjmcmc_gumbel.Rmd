@@ -404,7 +404,8 @@ pp <- plot_rjmcmc_sixpanel(
   truths = list(mu = mu_true, tau = tau_true, pi = pi_true),
   trace_alpha = 0.25,
   legend_position = "bottom",
-  panel_label_size = 10
+  panel_label_size = 10,
+  tau_range = c(0, 10000)
 )
 ggsave(
   file.path(pic_path, "rjmcmc_gumbel", "rjmcmc", "informative_prior", "k4", "k4.png"),

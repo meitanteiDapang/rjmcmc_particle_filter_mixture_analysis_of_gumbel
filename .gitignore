@@ -1,3 +1,5 @@
 **/*.png
 **/*.tmp.driveupload
 .Rproj.user
+.Rhistory
+.RData*
